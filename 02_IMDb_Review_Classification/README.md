@@ -98,3 +98,9 @@ This project classifies 50,000 IMDb movie reviews as positive or negative using 
 **For Data Analyst Roles:** Shows ability to evaluate multiple approaches, communicate model performance clearly, and make evidence-based recommendations.
 
 **For CS Master's Programs:** Demonstrates ML fundamentals, statistical rigor (cross-validation + significance testing), and deep understanding of text representation methods.
+
+---
+
+**Co-authored with:** Amaree Walker
+
+*Project completed: April 2025*
