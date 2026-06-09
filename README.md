@@ -140,11 +140,11 @@ To explore:
 
 ## Contact
 
-- **Email:** [your.email@example.com](mailto:cooper.woods@richmond.edu)
+- **Email:** [cooper.woods@richmond.edu](mailto:cooper.woods@richmond.edu)
 
-- **LinkedIn:** [[Your LinkedIn URL](https://www.linkedin.com/in/coopercwoods/)]
+- **LinkedIn:** [[https://www.linkedin.com/in/coopercwoods/](https://www.linkedin.com/in/coopercwoods/)]
 
-- **GitHub:** [github.com/YourUsername](https://github.com/cooper-woods)
+- **GitHub:** [github.com/cooper-woods](https://github.com/cooper-woods)
 
 ---
 
