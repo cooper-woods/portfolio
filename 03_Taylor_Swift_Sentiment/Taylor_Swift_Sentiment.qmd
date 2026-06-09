@@ -1,0 +1,226 @@
+---
+title: "Project 2"
+author: "Cooper Woods and Eric Markstein"
+subtitle: "DSST389: Advanced Data Science"
+institute: "University of Richmond"
+date: today
+echo: true
+format:
+  pdf:
+    anchor-sections: true
+    code-tools: false
+    code-link: true
+    embed-resources: true
+    link-external-icon: true
+    link-external-newwindow: true
+    number-sections: true
+    smooth-scroll: true
+    toc: true
+editor:
+  markdown:
+    wrap: 72
+---
+
+## Introduction
+
+Taylor Swift has built a long and evolving career, consistently reinventing her musical style with each era. Her 6th studio album, *Reputation*, is known for its darker, more aggressive production sound. Unlike her other albums, Reputation is heavily influenced by themes of betrayal, defiance, and media scrutiny, and she embraces the villainous persona the media had projected onto her. By using **sentiment analysis** techniques, we take a quantitative approach to determine if Reputation stands apart as Taylor Swift’s most negative album.
+
+## Loading the Libraries and Dataset
+
+```{r}
+#| label: libraries
+#| output: FALSE
+
+# Load necessary libraries
+library(ggrepel)
+library(tidytext)
+library(textdata)
+library(scales)
+
+# Set theme and seed once
+theme_set(theme_minimal())
+
+```
+
+
+```{r}
+#| label: q-set-up-file
+#| output: FALSE
+
+library(tidyverse)
+set.seed(123)
+
+songs <- read_tsv("../data/swift_corpus/cots-song-details.tsv") |>
+  select(Album, Track, Title, FeaturedArtists, FromTheVault) |>
+  rename(song_title = Title)
+
+albums <- read_tsv("../data/swift_corpus/cots-album-details.tsv") |>
+  select(Code, Title, SubTitle, Year) |>
+  rename(album_title = Title)
+
+lyrics <- read_tsv(
+  file = "../data/swift_corpus/cots-lyric-details.tsv",
+  col_names = FALSE
+)
+
+lyrics <- lyrics |>
+  rename(metadata = 1, text = 2) |>
+  separate(
+    metadata,
+    into = c("album_code", "track", "line", "part"),
+    sep = ":",
+    convert = TRUE
+  )
+
+lyrics <- lyrics |>
+  left_join(albums, join_by(album_code == Code)) |>
+  left_join(songs, join_by(album_code == Album, track == Track)) |>
+  mutate(part = case_when(
+    part == "V" ~ "Verse",
+    part == "C" ~ "Chorus",
+    part == "B" ~ "Bridge",
+    part == "I" ~ "IntroOutro",
+    part == "R" ~ "Refrain",
+    TRUE ~ part
+  )) |>
+  rename(
+    album_subtitle = SubTitle,
+    year = Year,
+    featured_artists = FeaturedArtists,
+    from_the_vault = FromTheVault
+  ) |>
+  select(
+    song_title, featured_artists, album_title, album_subtitle,
+    track, from_the_vault, year, line, part, text
+  )
+```
+
+## Prepare the Data
+
+To prepare the data for analysis, the lyrics are tokenized and the AFINN lexicon of English words sentiment rating is found for each word. The AFINN lexicon gives each word a rating between -5 for most negative and 5 for most positive.
+
+```{r}
+#| label: q-tokenize
+#| output: FALSE
+
+# tokenize words
+tidy_lyrics <- lyrics |>
+  unnest_tokens(input = text, output = word)
+```
+
+```{r}
+#| label: q-afinn
+#| output: FALSE
+
+# store the AFINN lexicon
+afinn <- get_sentiments("afinn")
+
+# creates a new table with sentiment values for each word
+lyrics_afinn <- tidy_lyrics |>
+  left_join(afinn, join_by(word)) |>
+  mutate(sentiment_value = if_else(is.na(value), 0, value)) |>
+  group_by(song_title, album_title, year) |>
+  summarize(
+    afinn_net = sum(sentiment_value),
+    length = n()
+  ) |>
+  # normalize afinn by number of words in the song
+  mutate(afinn_normalized = afinn_net / length) |>
+  arrange(desc(afinn_normalized))
+```
+
+## Data Analysis and Visualizations
+
+### Boxplot of Taylor Swift Albums vs. AFINN Normalized
+
+```{r}
+#| label: fig-boxplot
+#| fig-cap: Comparing Sentiment Across Albums
+
+# creates a boxplot layered on top of a jitter plot
+lyrics_afinn |>
+  filter(album_title != "Other Songs") |>
+  ggplot(aes(
+    x = reorder(album_title, desc(afinn_normalized)),
+    y = afinn_normalized,
+    color = album_title
+  )) +
+  geom_jitter(alpha = 0.3) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "Comparing Sentiment Across Albums",
+    subtitle = "Each dot represents the sentiment of a song on the album",
+    x = "Album Title",
+    y = "AFINN Normalized Sentiment Scores",
+    color = "Album Title"
+  )
+```
+
+By plotting Taylor Swift’s albums by their associated AFINN Normalized Sentiment Score, we are able to see how Reputation compares to other albums. By examining the boxplots, along with individual song sentiment points, we find that **Reputation falls in the middle of the pack**.
+
+This analysis **disproves our hypothesis**. However, @fig-boxplot only shows the boxplot without showing what percentage of songs on the album fall into positive, neutral, or negative sentiments. We will do further analysis to find how many songs on Reputation are negative as well as which album has the highest percentage of negative songs.
+
+### Bar Chart Comparing Albums by Percentage of Positive, Negative, and Neutral Songs on Each Album
+
+```{r}
+#| label: fig-bar-chart
+#| fig-cap: Comparing Sentiment Across Albums
+
+# bing categorizes words into binary positive or negative
+bing <- get_sentiments("bing")
+
+tidy_lyrics |>
+  # keep just songs from albums
+  filter(album_title != "Other Songs") |>
+  group_by(song_title) |>
+  mutate(song_length = n()) |>
+  ungroup() |>
+  left_join(bing, join_by(word)) |>
+  drop_na(sentiment) |>
+  group_by(song_title, song_length) |>
+  count(sentiment) |>
+  pivot_wider(
+    names_from = sentiment,
+    values_from = n,
+    values_fill = 0
+  ) |>
+  ungroup() |>
+  # add columns for net sentiment, normalized net sentiment
+  # then determine sentiment class based on mean_bing +/- standard deviation
+  mutate(
+    net_sentiment = positive - negative,
+    net_sentiment_normed = net_sentiment / song_length,
+    mean_bing = mean(net_sentiment_normed, na.rm = TRUE),
+    sd_bing = sd(net_sentiment_normed, na.rm = TRUE),
+    bing_class = case_when(
+      net_sentiment_normed > mean_bing + sd_bing ~ "positive",
+      net_sentiment_normed < mean_bing - sd_bing ~ "negative",
+      TRUE ~ "neutral"
+    ),
+    bing_class = fct_relevel(
+      bing_class, "positive", "neutral", "negative"
+    )
+  ) |>
+  inner_join(tidy_lyrics |> distinct(song_title, album_title), 
+             by = "song_title") |>
+  # create bar plot
+  ggplot(aes(x = album_title, fill = bing_class)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = c("positive" = "chartreuse3",
+                               "neutral" = "gold", 
+                               "negative" = "red")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "Percent Positive/Negative/Neutral Songs on Each Album",
+    x = "Album Title",
+    y = "Percentage",
+    fill = "Class"
+  )
+```
+
+
+In @fig-bar-chart, each bar represents the proportion of positive (green), neutral (yellow), and negative (red) songs per album. Based on this analysis, it appears *Midnights* and *Folklore* have the **highest percentage of negative songs** compared to other albums. From a different perspective, *The Tortured Poets Department* is the **least positive** album, containing zero songs classified as positive. *Reputation*, on the other hand, is a **neutral album**, along with *Speak Now*. *Lover*, as its title suggests, is by far the **most positive** album, with approximately 37% of its songs classified as positive..
+
+Therefore, if you are wanting to listen to one of Taylor Swift’s albums based on a certain vibe, consult this chart to find a blend of songs that best fits your mood.
