@@ -1,0 +1,128 @@
+---
+title: "Group Project 1: Peanut Butter vs Almond Butter Analysis"
+subtitle: "DSST389: Advanced Data Science"
+author: "*Anush Margaryan & Cooper Woods*"
+institute: "University of Richmond"
+date: 2/17/2025
+format:
+  html:
+    embed-resources: true
+  pdf: default
+editor: source
+toc: true
+---
+
+## Introduction
+
+Approximately **4.5 million U.S. adults** have peanut allergies, making it one of the most prevalent food allergies. You can read more about peanut allergy prevalence and characteristics [here](https://www.jacionline.org/article/S0091-6749%2820%2932412-X/fulltext). Thus, it is important to find **nutritionally comparable alternatives**.
+
+For our project, we investigate whether almond butter, a popular alternative, can provide **similar protein content** to peanut butter. Additionally, we compare the **degree of processing (FPro)** characterizing peanut and almond butter preparation techniques. **It is important to note that a lower FPro score indicates that the food is less processed.**
+
+We obtained our data from [True Food](https://www.truefood.tech), powered by a comprehensive database Grocery DB, for peanut and almond butter **protein content** and **FPro score** across the available brands.
+
+### Library Setup
+Below we will import the necessary libraries for our analysis.
+```{r}
+#| label: libraries
+#| echo: true
+#| warning: false
+
+library(tidyverse) #Data manipulation, visualization, and analysis
+library(ggrepel) #Improved readability of labels
+library(dplyr) #Efficient data manipulation
+library(stringr) #Character string manipulation
+library(rstatix) #Used for calculating error bars
+theme_set(theme_minimal()) #Minimalistic theme for the plots
+```
+
+## About the data
+We begin by loading the dataset. Here are the first few rows of `butters`:
+
+```{r}
+#| echo: false
+
+butters <- read_csv("../data/butters.csv") #Read the dataset
+head(butters) #Display the first few rows
+```
+### Description
+
+- The `butters` data was extracted from the **True Food** database.
+- It contains **32 rows**, each representing 11 peanut and 21 almond butter brands.
+  
+### Data dictionary
+
+Columns we will analyze include:
+
+| Column Name | Description                     | Unit                 |
+|-------------|---------------------------------|----------------------|
+| `name`      | Product name as marketed        | Character (text)     |
+| `fpro_score`| Food processing score           | Scaled 0 to 1        |
+| `protein`   | Protein content per serving     | Grams (g)            |
+| `category`  | Type of butter                  | "Peanut" or "Almond" |
+
+## Data Analysis and Visualizations
+
+```{r}
+#| echo: false
+# Renaming the 'category'column to 'Type of Butter' for analysis clarity
+
+butters <- butters |>
+  rename(`Type of Butter` = category) 
+```
+
+### Scatterplot of FPro Score vs. Protein Conent (g)
+
+```{r}
+#| label: protein-vs-fpro-scatterplot
+#| fig-cap: "Figure 1. Scatterplot showing the relationship between food processing score (FPro) and protein content per serving (g) for various peanut (in orange) and almond (in brown) butters."
+#| echo: false
+
+butters |>
+  ggplot(aes(x = fpro_score, y = protein,
+             color = `Type of Butter`)) +
+  geom_point() +
+  geom_smooth(aes(color = `Type of Butter`),
+      method = "lm",
+      se = FALSE,
+      formula = y ~ x) +
+  geom_text_repel(aes(label = name), size = 2.5) +
+  labs(title = "Almond Butter vs Peanut Butter Analysis",
+       x = "Food Processing Score (FPro)",
+       y = "Protein Amount (g)"
+       ) +
+    scale_color_manual(values = c("almond butter" = "chocolate4", "peanut butter" = "darkorange"),
+                       labels = c("almond butter" = "Almond", "peanut butter" = "Peanut"))
+```
+
+### Bar Chart Comparing Average FPro Scores for Almond and Peanut Butters
+
+```{r}
+#| label: fpro-score-bar-chart
+#| fig-cap: "Figure 2. Bar Chart comparing the protein content per serving (g) for various peanut (in orange) and almond (in brown) butters. 
+#| The standard error bars show variability within each butter type."
+#| echo: false
+
+butters_summary <- butters |>
+  group_by(`Type of Butter`) |>
+  summarise(
+    mean_fpro = mean(fpro_score, na.rm = TRUE),
+    se_fpro = sd(fpro_score, na.rm = TRUE) / sqrt(n()) #calculating the standard error
+  ) 
+ggplot(butters_summary, aes(x = `Type of Butter`, y = mean_fpro, fill = `Type of Butter`)) +
+  geom_bar(stat = "identity", position = position_dodge(), color = "black") +
+  geom_errorbar(aes(ymin = mean_fpro - se_fpro, 
+                    ymax = mean_fpro + se_fpro),
+                position = position_dodge(0.9),
+                width = 0.3 #determining the minimum and maximum ranges of the standard error
+                ) +
+  scale_fill_manual(values = c("almond butter" = "chocolate4", "peanut butter" = "darkorange"),
+                       labels = c("almond butter" = "Almond", "peanut butter" = "Peanut")) +
+  labs(title = "Almond Butter vs Peanut Butter Analysis",
+       x = "Butter Type",
+       y = "Food Processing Score (FPro)")
+```
+## Conclusions
+
+Overall, our analysis suggests that there is no clear correlation between processing and protein content. While **peanut butter** has naturally **higher protein content**, **almond butter** seems to be generally **less processed**. Thus, individuals with peanut allergies should look for a balance bwteen lower processing and higher protein content in almond butters.
+
+
