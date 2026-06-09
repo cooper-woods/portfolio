@@ -182,4 +182,6 @@ I analyzed sentiment across Taylor Swift's complete discography (600+ songs, 10+
 
 ---
 
+**Co-authored with:** Eric Markstein
+
 *Project completed: March 2025*
