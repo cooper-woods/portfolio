@@ -1,0 +1,380 @@
+---
+title: "Group Project 3: IMDB Movie Reviews"
+subtitle: "DSST389: Advanced Data Science"
+author: "*Amaree Walker & Cooper Woods*"
+institute: "University of Richmond"
+date: 4/16/2025
+format:
+  html:
+    embed-resources: true
+  pdf: default
+editor: source
+toc: true
+---
+
+## Introduction
+
+IMDb reviews often express strong opinions about films, making them a valuable resource for sentiment analysis. In this project, we classify review sentiment—positive or negative—using two approaches: one based on tf-idf and another using word embeddings.
+
+We compare model performance to determine which method better captures sentiment patterns in movie reviews, using a labeled dataset and techniques from the Text classification with models notebook.
+
+### Library Setup
+
+Below we will import the necessary libraries and packages for our analysis.
+
+```{r}
+#| label: libraries
+#| echo: true
+#| warning: false
+
+library(tidyverse) # Data manipulation, visualization, and analysis
+library(ggrepel) # Improved readability of labels
+library(dplyr) # Efficient data manipulation
+library(stringr) # Character string manipulation
+theme_set(theme_minimal()) # Minimalistic theme for the plots
+
+packages <- c(
+  "tidyverse", "tidymodels", "textrecipes", "kknn",
+  "xgboost", "glmnet", "corrplot", "parallel", "future",
+  "textdata", "glue", "stats"
+)
+
+for (pkg in packages) {
+  library(pkg, character.only = TRUE)
+}
+
+theme_set(theme_minimal())
+
+set.seed(123)
+
+all_cores <- parallel::detectCores()
+plan(multisession, workers = all_cores)
+```
+
+## About the Data
+
+This data was collected from Stanford's [Large Movie Review Dataset](https://ai.stanford.edu/~amaas/data/sentiment/?utm_source=chatgpt.com), which is a collection of texts from 50,000 IMDb reviews. Scores of 1-4 were categorized to be negative sentiment, while scores of 7-10 were categorized to be positive sentiment. Neutral scores of 5 and 6 were removed from the dataset.
+
+We begin by loading the dataset. Here are the first few rows of \`reviews\`\`:
+
+```{r}
+#| label: load-data
+#| echo: false
+
+reviews <- read_csv("../data/imdb_reviews.csv.xz")
+reviews |>
+  group_by(sentiment) |>
+  slice_sample(n = 2)
+```
+
+### Data Dictionary
+
+The IMDb dataset used in this analysis contains the following variables:
+
+-   **text**: The full written movie review. This is the primary predictor variable.
+
+-   **sentiment**: The label indicating whether the review is positive or negative. This is the target variable used for classification.
+
+Additional variables created during preprocessing include:
+
+-   **.pred_class**: The predicted class label from the model (positive/negative).
+
+-   **.pred_positive** and **.pred_negative**: Model-assigned probabilities for each sentiment class.
+
+-   **correct**: A logical value indicating whether the model's prediction matches the true label (used for evaluation and plotting).
+
+### Cleaning the data
+
+In order to clean the data, we first convert the `sentiment` column to an indicator variable such that `"neg" == 0` and `"positive" == 1`. Then, we ensure that `sentiment` is a saved as a factor.
+
+```{r}
+#| label: clean-data
+#| echo: false
+
+reviews <- reviews |> mutate(
+  sentiment = if_else(sentiment == "neg", 0, 1),
+  sentiment = as_factor(sentiment)
+)
+reviews
+```
+
+### Exploratory analysis
+
+We conduct some exploratory analysis to see how our data initially presents. Are there any obvious patterns?
+
+```{r}
+#| label: exploratory-analysis
+#| echo: false
+
+reviews |>
+  ggplot(aes(x = sentiment)) +
+  geom_bar()
+```
+
+### Splitting the data
+
+Next, we split your data into training and testing sets (80%-20%), stratified by the sentiment type (pos or neg), and output our splits.
+
+```{r}
+#| label: split-data
+#| echo: false
+
+data_split <- initial_split(reviews, prop = 0.8, strata = sentiment)
+train_data <- training(data_split)
+test_data <- testing(data_split)
+
+data_split
+```
+
+## Analysis 1: tf-idf Model
+
+### Recipe
+
+To begin our first analysis, we first create a recipe that tokenizes the text, removes stopwords, converts counts into term frequencies, and filters for the top 100 tokens. Then we output our recipe.
+
+```{r}
+#| label: tf-idf-recipe
+#| echo: false
+
+reviews_recipe <- recipe(sentiment ~ text, data = train_data) |>
+  step_tokenize(text) |>
+  step_stopwords(text) |>
+  step_tokenfilter(text, max_tokens = 100) |>
+  step_tfidf(text)
+
+reviews_recipe
+```
+
+### Model Specification
+
+Then, we specify a logistic regression model for classification using glm and output our model specification.
+
+```{r}
+#| label: model-specification
+#| echo: false
+
+log_spec <- logistic_reg() |>
+  set_engine("glm") |>
+  set_mode("classification")
+
+log_spec
+```
+
+### Workflow and Fitting
+
+Next we create a workflow, fit the logistic regression model to our training data, and return the fit model for our reviews.
+
+```{r}
+#| label: workflow-fitting
+#| echo: false
+
+reviews_wf <- workflow() |>
+  add_recipe(reviews_recipe) |>
+  add_model(log_spec)
+
+reviews_fit <- reviews_wf |> fit(data = train_data)
+
+reviews_fit
+```
+
+### Predictions and Evaluation
+
+Finally, we can evaluate our fit model by predicting on our test data. We bind both the probabilities, predicted classes, and original columns of the test data to the results object, and retrieve a confusion matrix (`conf_mat()`) from the results. Also, we use the results to calculate the `accuracy()` of our model.
+
+```{r}
+#| label: confusion-matrix
+#| echo: false
+
+reviews_results <- bind_cols(
+  predict(reviews_fit, test_data, type = "prob"),
+  predict(reviews_fit, test_data),
+  test_data
+)
+
+reviews_results |> conf_mat(truth = sentiment, estimate = .pred_class)
+```
+
+```{r}
+#| label: tf-idf-results
+reviews_results |> accuracy(truth = sentiment, estimate = .pred_class)
+```
+
+### Visualization
+
+Now, we want to create a visualization showing how well our model is performing:
+
+```{r}
+#| label: token-visualization
+reviews_results |>
+  ggplot(aes(x = .pred_1, fill = sentiment)) +
+  geom_histogram(alpha = 0.5, bins = 10) +
+  scale_fill_brewer(palette = "Dark2")
+```
+
+This model is performing well but not great. In general, our model is only about 24% more accurate than chance at predicting which reviews are positive or negative, which is why we see more of a normal distribution visualization as opposed to seeing a U-shaped curve graph.
+
+### Interpretation
+
+What does this all mean? Let's find out which words our tf-idf model most associates with positive reviews. Below, we extract the twenty terms from the model that are most strongly associated with positive reviews.
+
+```{r}
+#| label: tfidf-pos-reviews
+reviews_fit |>
+  tidy() |>
+  slice_max(estimate, n = 20)
+```
+
+Now, let's see which words does our tf-idf model most associates with negative review.
+
+```{r}
+#| label: tfidf-neg-reviews
+reviews_fit |>
+  tidy() |>
+  slice_min(estimate, n = 20)
+```
+
+Overall, some of the word associations make sense intuitively (like good being more associated with positive reviews) while others (like pretty being more associated with negative reviews) not so much. Let's see if our second model can do any better.
+
+## Analysis 2: Word Vector-Based Logistic Regression
+
+In this analysis, we apply word embeddings rather than token frequencies to represent the text data. Word embeddings map each word into a numeric vector space that captures semantic meaning.
+
+### Download and Load GloVe Embeddings
+
+We begin by downloading 300-dimensional GloVe embeddings using the textdata package
+
+```{r}
+#| label: glove-download
+
+options(timeout = 1000)
+
+glove <- textdata::embedding_glove6b(dim = 300)
+
+glove |> slice_sample(n = 5) # preview sample of the embeddings
+```
+
+### Define Logistic Regression Model
+
+We specify a logistic regression model with L1 regularization (lasso). The penalty parameter will be tuned.
+
+```{r}
+#| label: define-model
+log_spec <- logistic_reg(penalty = tune(), mixture = 1) |>
+  set_engine("glmnet") |>
+  set_mode("classification")
+```
+
+### Create Recipe and Workflow
+
+We build a recipe that tokenizes text, removes stop words, and replaces tokens with word embeddings. Then, we combine this with our model in a workflow.
+
+```{r}
+#| label: embed-recipe
+embedding_recipe <- recipe(sentiment ~ text, data = train_data) |>
+  step_tokenize(text) |>
+  step_stopwords(text) |>
+  step_word_embeddings(text, embeddings = glove)
+
+embedding_wf <- workflow() |>
+  add_recipe(embedding_recipe) |>
+  add_model(log_spec)
+```
+
+### Cross-Validation Setup
+
+We use 5-fold cross-validation to tune the penalty hyperparameter. Stratification ensures that each fold has a balanced sentiment distribution.
+
+```{r}
+#| label: embed-folds
+embedding_folds <- vfold_cv(train_data, v = 5, strata = sentiment)
+```
+
+### Hyperparameter Tuning
+
+We define a grid of 20 values for the penalty parameter and tune the model using accuracy as the evaluation metric.
+
+```{r}
+#| label: hyperparameter-tuning
+plan(sequential)
+# Explained in sources section at the end
+
+embedding_grid <- grid_regular(penalty(), levels = 5)
+
+embedding_tune <- tune_grid(
+  embedding_wf,
+  resamples = embedding_folds,
+  grid = embedding_grid,
+  metrics = metric_set(accuracy)
+)
+
+embedding_best <- select_best(embedding_tune, metric = "accuracy")
+
+embedding_final_wf <- finalize_workflow(embedding_wf, embedding_best)
+```
+
+### Final Fit on Test Data
+
+We now evaluate the finalized model using the test set created earlier. We report both the confusion matrix and accuracy.
+
+```{r}
+#| label: final-embed-fit
+embedding_final_fit <- embedding_final_wf |> last_fit(split = data_split)
+
+embedding_results <- collect_predictions(embedding_final_fit)
+
+embedding_results |> conf_mat(truth = sentiment, estimate = .pred_class)
+
+embedding_results |> accuracy(truth = sentiment, estimate = .pred_class)
+```
+
+### Interpretation
+
+Let's find out which words our word embeddings model most associates with positive reviews. Same as before, we extract the twenty terms from the model that are most strongly associated with positive reviews.
+
+```{r}
+#| label: embed-pos-reviews
+embedding_final_fit |>
+  extract_fit_parsnip() |>
+  tidy() |>
+  slice_max(estimate, n = 20)
+```
+
+Now, let's see which words does our word embeddings model most associates with negative review.
+
+```{r}
+#| label: embed-neg-reviews
+embedding_final_fit |>
+  extract_fit_parsnip() |>
+  tidy() |>
+  slice_min(estimate, n = 20)
+```
+
+Overall, we can see how these sets of words differ from the tf-idf model's set. Let's see if these apparent differences are *statistically significantly* different.
+
+## T-Test: Comparing Model Accuracy
+
+We use a paired t-test to compare prediction correctness between the tf-idf model and the embedding model.
+
+```{r}
+#| label: t-test
+token_correct <- reviews_results |> pull(.pred_class) ==
+  reviews_results |> pull(sentiment)
+embed_correct <- embedding_results |> pull(.pred_class) ==
+  embedding_results |> pull(sentiment)
+
+token_correct |> t.test(embed_correct, paired = TRUE)
+```
+
+On average, **the token-based model performed better than the embedding-based model** by about 9.66 percentage points.
+
+## Conclusion
+
+Overall, both the tf-idf and word embedding models achieved decent classification performance on the IMDb dataset. However, the **tf-idf-based model slightly outperformed the word embedding model** in terms of accuracy on the test set.
+
+The paired t-test comparing prediction correctness showed a statistically significant difference, suggesting that the tf-idf model’s advantage is not due to random variation. This may reflect the fact that *tf-idf captures word importance specific to this dataset*, whereas *pre-trained embeddings are more general-purpose.*
+
+From a practical perspective, **tf-idf may be preferable when training data is plentiful and well-labeled**, while **word embeddings offer advantages in scenarios with smaller datasets or where semantic similarity is more important than exact word usage.**
+
+## Sources
+
+In @chunk-hyperparameter-tuning we had issues having that chunk run with an error about multisession. We found a solution to this problem from [This website](https://cran.r-project.org/web/packages/future/vignettes/future-1-overview.html) by changing the plan from multisession to sequential.
