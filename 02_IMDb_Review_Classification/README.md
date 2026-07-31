@@ -4,6 +4,8 @@
 ### Project Overview
 This project classifies 50,000 IMDb movie reviews as positive or negative using two machine learning approaches: TF-IDF logistic regression and GloVe word embeddings with logistic regression. Through cross-validation and statistical testing, the project rigorously compares both methods and identifies when each is most appropriate.
 
+📊 **[View Rendered Analysis](https://cooper-woods.github.io/portfolio/02_IMDb_Review_Classification/IMDb_Review_Classification.html)**
+
 ### Research Questions
 1. Can we accurately classify movie review sentiment from raw text?
 2. Does TF-IDF or word embeddings better capture sentiment in reviews?
