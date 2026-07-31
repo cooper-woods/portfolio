@@ -6,6 +6,8 @@
 
 This project compares the lyrical styles of John Lennon and Paul McCartney by analyzing text from 200+ Beatles songs using natural language processing techniques.
 
+📊 **[View Rendered Analysis](https://cooper-woods.github.io/portfolio/01_Beatles_Lyrics_Analysis/Beatles_Lyrics_Analysis.html)**
+
 ### Research Question
 
 Do Lennon and McCartney have distinctly different lyrical styles? What themes emerge in each songwriter's work?
