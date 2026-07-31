@@ -6,6 +6,8 @@
 
 With ~4.5 million U.S. adults having peanut allergies, finding nutritionally comparable alternatives is important. I analyzed 32 brands of peanut and almond butter from the True Food database to compare **protein content** and **food processing scores** (FPro). The goal: provide evidence-based recommendations for allergy sufferers seeking nutritional balance.
 
+📊 **[View Rendered Analysis](https://cooper-woods.github.io/portfolio/04_Peanut_vs_Almond_Butter/Peanut_vs_Almond_Butter.html)**
+
 ### Research Questions
 
 1. Does almond butter provide similar protein content to peanut butter?
