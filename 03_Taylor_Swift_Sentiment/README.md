@@ -6,6 +6,8 @@
 
 I analyzed sentiment across Taylor Swift's complete discography (600+ songs, 10+ albums) using two different sentiment analysis methods: **AFINN** (continuous sentiment scores) and **Bing** (binary positive/negative). The analysis explores whether Reputation truly is Taylor's darkest album and how sentiment shifts with creative eras over 50+ years.
 
+📊 **[View Rendered Analysis](https://cooper-woods.github.io/portfolio/03_Taylor_Swift_Sentiment/Taylor_Swift_Sentiment.html)**
+
 ### Research Questions
 
 1. Does Reputation have distinctly more negative sentiment than other Taylor Swift albums?
