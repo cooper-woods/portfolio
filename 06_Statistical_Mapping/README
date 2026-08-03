@@ -1,0 +1,102 @@
+# Statistical Mapping & Geographically Weighted Regression: Educational Attainment & Democratic Voting
+## GEO 365: Advanced GIS | University of Richmond
+
+### Project Overview
+This project analyzes spatial relationships between educational attainment and Democratic Party voting patterns across United States counties using both global (OLS) and local (GWR) regression models. By comparing spatial and aspatial regression approaches, the project demonstrates how geographic context influences political outcomes and sociodemographic relationships.
+
+### Research Questions
+1. What is the global relationship between educational attainment and Democratic voting patterns?
+2. How do these relationships vary across geographic regions?
+3. Is a global regression model appropriate, or does local spatial variation require geographically weighted regression?
+
+### Dataset
+- **Source:** American Community Survey (ACS 5-year average, 2017-2021) and county-level election data (2020)
+- **Geography:** All contiguous United States counties
+- **Variables:** Educational attainment (% bachelor's degree or higher), Democratic vote share (%), population demographics, economic characteristics
+
+### Methods
+
+#### Part 1: Exploratory Data Analysis
+- Bivariate correlation analysis between educational attainment and voting patterns
+- Local Bivariate Relationships tool to identify geographic variation in correlations
+- Examined geographic patterns of relationship strength and significance
+
+#### Part 2: Global Regression (OLS)
+- Ordinary Least Squares regression with Democratic voting as dependent variable
+- Independent variables include educational attainment and demographic controls
+- Tested for multicollinearity (VIF) and model fit (Adjusted R²)
+- Global Moran's I tested for spatial autocorrelation in residuals
+
+#### Part 3: Local Regression (GWR)
+- Geographically Weighted Regression implementing local regression at each county
+- Golden Search algorithm to optimize bandwidth (15-150 neighbors)
+- Generated local R² values and coefficient estimates for each location
+- Filtered results for model stability (Conditional Number < 1000)
+
+### Key Findings
+
+**Global Relationship:**
+- Educational attainment shows positive correlation with Democratic voting (r ≈ 0.57)
+- Global OLS model explains ~32% of voting variation (Adjusted R² = 0.32)
+- Significant positive spatial autocorrelation in residuals (Moran's I = 0.35, p < 0.001)
+
+**Spatial Variation:**
+- Northeast region shows strongest positive education-voting relationship
+- Midwest exhibits moderate correlation, Southwest shows weaker relationships
+- Some southern counties display negative correlations or non-significant relationships
+
+**Model Comparison:**
+- GWR substantially outperforms global OLS model in local fit (Local R² = 0.75-0.85 in best-fit areas)
+- Geographic variation in coefficients reveals regional political economies
+- Model instability (Conditional Number > 1000) identified in ~12% of counties
+
+### Technical Implementation
+
+**Software & Tools:**
+- ArcGIS Pro — Spatial regression modeling
+- Local Bivariate Relationships tool — Geographic correlation analysis
+- OLS (Ordinary Least Squares) regression — Global model
+- GWR (Geographically Weighted Regression) — Local spatial models
+- Global Moran's I — Spatial autocorrelation assessment
+
+**Key Analysis Steps:**
+1. Data exploration and hypothesis development
+2. Scatter plot creation with linear trend lines
+3. Local bivariate correlation mapping with significance testing
+4. OLS model specification and VIF assessment for multicollinearity
+5. Spatial autocorrelation testing of OLS residuals
+6. GWR bandwidth optimization using Golden Search
+7. Local R² and coefficient mapping for spatial pattern interpretation
+
+### Files in This Folder
+- Lab7_Instructions.docx — Full assignment prompt with detailed methodology
+- Woods_Lab7done.docx — Completed analysis and deliverables
+- Bivariable_Map.jpg — Local correlation analysis (education vs. voting)
+- MapReport1.jpg — Global Moran's I visualization
+- Dem_Model_Map.jpg — Local R² values from GWR
+
+### What I Learned
+- Comparison of global vs. local spatial regression approaches
+- How geographic context fundamentally changes statistical relationships
+- Importance of testing spatial autocorrelation assumptions
+- Interpretation of spatially varying coefficients
+- Bandwidth optimization and model stability assessment in GWR
+- Visual communication of complex spatial statistical results
+
+### Skills Demonstrated
+✅ Exploratory Spatial Data Analysis
+✅ Bivariate Correlation & Hypothesis Development
+✅ Ordinary Least Squares (OLS) Regression
+✅ Geographically Weighted Regression (GWR)
+✅ Multicollinearity Assessment (VIF)
+✅ Spatial Autocorrelation Testing (Global Moran's I)
+✅ Statistical Mapping & Choropleth Design
+✅ Coefficient Interpretation & Spatial Visualization
+
+---
+
+**From:** GEO 365: Advanced GIS coursework | **Completed:** April 2025
+
+**For Data Analyst Roles:** Demonstrates statistical rigor, ability to move beyond global models to understand local variation, and skill in communicating complex relationships through maps.
+
+**For GIS/Social Science Roles:** Shows mastery of spatial statistics, understanding of geographic variation in social phenomena, and ability to critique global models in favor of local approaches.
