@@ -4,69 +4,59 @@
 ### Project Overview
 This project models suitable habitat for the endangered Bicknell's Thrush across New England by analyzing occurrence data and creating a deterministic habitat suitability model. Using elevation and land cover data, the project identifies critical conservation areas where this rare high-elevation specialist species is most likely to be found.
 
+The analysis captures 93.2% of documented occurrence points within modeled habitat, identifying 5,561 km² of suitable habitat concentrated in Northern Appalachian high elevations.
+
 ### Research Question
 Where is suitable habitat for the Bicknell's Thrush located across New England, and what percentage of documented occurrences fall within modeled habitat ranges?
 
-### Dataset
-- **Species Occurrence Data:** Bicknell's Thrush sightings (1995-2019) from GBIF (Global Biodiversity Information Facility)
-- **Elevation Model:** 200m resolution Digital Elevation Model from OpenTopography
-- **Land Cover:** National Land Cover Database (NLCD 2016), 200m resolution from MRLC
-- **Study Area:** New England states (Maine, Vermont, New Hampshire, Massachusetts, Rhode Island, Connecticut)
+### Key Findings
+- **Habitat Area:** 5,561 km² of suitable habitat identified across New England
+- **Geographic Concentration:** 82% of habitat in Vermont and New Hampshire
+- **Elevation Threshold:** Strict dependence on forests above 600m elevation
+- **Land Cover Specificity:** Spruce-fir forest type, no sightings in alternative forest types
+- **Model Validation:** 93.2% of occurrence points fall within refined (buffered) suitable habitat
 
 ### Methods
 
-#### 1. Occurrence Point Analysis
-- Spatial join to assign observations to states
-- Summary statistics to determine distribution of sightings across New England
-- Identified elevation clustering and state-level occurrence patterns
+**Occurrence Analysis:** Spatial join of 487 occurrence records (1995-2019) to state boundaries; summary statistics by state
 
-#### 2. Deterministic Habitat Modeling
-- Created conditional rasters using Raster Calculator: elevation > 600m and spruce-fir forest land cover type
-- Multiplied conditional rasters to identify pixels meeting both criteria
-- Validated model against known occurrence points
+**Habitat Modeling:** Deterministic approach using conditional rasters—elevation ≥600m AND spruce-fir forest type (NLCD class 42)
 
-#### 3. Model Refinement
-- Buffered suitable habitat polygons by 200m (one raster pixel) to capture edge cases
-- Used Select by Location to quantify improvement in occurrence point coverage
-- Calculated total suitable habitat area in square kilometers
+**Model Refinement:** 200m buffer applied to suitable habitat polygons to capture edge cases; validation against known occurrences
 
-### Key Findings
-
-**Habitat Characteristics:**
-- Bicknell's Thrush concentrated in high-elevation spruce-fir forests
-- Primary occurrences in Vermont and New Hampshire mountains
-- Model identified 5,561 km² of suitable habitat across New England
-
-**Model Performance:**
-- Deterministic model captured 93.2% of recorded occurrence points within buffered suitable habitat
-- Geographic concentration in Northern Appalachian high elevations validates ecological knowledge
-
-**Conservation Implications:**
-- Suitable habitat limited to montane regions above 600m elevation
-- Climate change and forestry pose significant threats to this restricted habitat range
-- Model provides quantitative basis for conservation priority areas
-
-### Technical Implementation
-
-**Software & Tools:**
-- ArcGIS Pro — Spatial analysis and modeling
-- Raster Calculator — Conditional statements for habitat suitability
-- Raster to Polygon — Vector conversion for analysis
-- Buffer & Select by Location — Model refinement and validation
-
-**Key Analysis Steps:**
-1. Spatial join of occurrence points to state boundaries
-2. Clipping and hillshade visualization of elevation data
-3. Conditional raster creation for elevation and land cover
-4. Raster algebra (multiplication) to identify suitable habitat
-5. Extract values to points and selection by attributes for validation
-6. Buffer and dissolve operations for model improvement
+**Skills Demonstrated:**
+- Raster analysis & spatial modeling
+- Conditional logic (Raster Calculator)
+- Spatial join & summary statistics
+- Model validation & refinement
+- Professional cartography
 
 ### Files in This Folder
-- Lab2_Instructions.docx — Original assignment prompt with full methodology
-- Woods_Lab2done.docx — Completed analysis and findings
-- Dem_Model_Map.jpg — Elevation and occurrence point visualization
-- IV_Maps.jpg — Independent variable analysis (elevation + land cover)
+- `05_Habitat_Modeling_Report.md` — Full professional analysis report
+- `05_Habitat_Modeling_Map1.jpg` — Habitat suitability map with occurrence points
+- `README.md` — This file
+
+### Data Sources
+
+**Species Occurrence Data:**
+- Global Biodiversity Information Facility (GBIF)
+- https://www.gbif.org/
+- ~487 records, 1995-2019
+
+**Elevation Model:**
+- OpenTopography (SRTM data)
+- https://cloud.sdsc.edu/v1/AUTH_opentopography/
+- 200m resolution, resampled
+
+**Land Cover Classification:**
+- National Land Cover Database (NLCD) 2016
+- Multi-Resolution Land Characteristics Consortium (MRLC)
+- https://www.mrlc.gov/data
+- 200m resolution
+
+**Administrative Boundaries:**
+- U.S. Census Bureau
+- New England state polygon data
 
 ### What I Learned
 - How to construct and validate habitat suitability models using raster analysis
@@ -75,20 +65,28 @@ Where is suitable habitat for the Bicknell's Thrush located across New England, 
 - How buffering and refinement improve model performance
 - Quantifying spatial analysis results for conservation planning
 
-### Skills Demonstrated
-✅ Raster Analysis & Spatial Modeling
-✅ Deterministic Habitat Suitability Modeling
-✅ Spatial Join & Summary Statistics
-✅ Raster Calculator & Conditional Logic
-✅ Model Validation Against Field Data
-✅ Cartography & Professional Map Production
-✅ Quantitative Spatial Analysis
-
 ---
-
-**From:** GEO 365: Advanced GIS coursework | **Completed:** January 2025
 
 **For Data Analyst Roles:** Shows ability to model spatial phenomena, validate results against real-world data, and communicate complex analyses through professional cartography.
 
 **For GIS/Environmental Roles:** Demonstrates habitat modeling expertise, conservation planning capabilities, and understanding of endangered species assessment methodologies.
 
+### For Graduate Programs (MS CS / Data Science)
+
+This project demonstrates foundational computational thinking for spatial data science. 
+The deterministic modeling approach—using conditional logic, raster algebra, and validation 
+workflows—parallels algorithm design and computational problem-solving. This work shows:
+
+- **Algorithmic thinking:** Conditional statements, spatial joins, and set operations 
+  applied to real-world conservation problems
+- **Validation & rigor:** Systematic evaluation of model performance (93.2% accuracy) 
+  against ground-truth data—essential for graduate-level research
+- **Domain-specific computing:** Understanding how GIS operations map to computational 
+  concepts, bridging geography and computer science
+- **Quantitative analysis:** Moving from qualitative ecological understanding to 
+  quantitative habitat extent metrics (5,561 km²)
+
+This project represents the intersection of geospatial analysis and computational methods 
+that defines modern data science graduate work.
+
+*Analysis completed: January 2025*
