@@ -84,28 +84,4 @@ Geographically Weighted Regression explains 75-85% of local voting variation com
 
 **For GIS/Social Science Roles:** Shows mastery of spatial statistics, geographic variation in social phenomena, and critical evaluation of global models.
 
-### For Graduate Programs (MS CS / Data Science)
-
-This project demonstrates advanced statistical reasoning and spatially-explicit machine 
-learning modeling—core competencies for graduate computer science and data science programs.
-
-Key graduate-level contributions:
-
-- **Advanced regression modeling:** Comparison of global (OLS) vs. local (GWR) approaches 
-  demonstrates understanding of model assumptions, spatial autocorrelation, and when 
-  sophisticated methods are necessary
-- **Spatial statistics:** Implementation of complex algorithms (Geographically Weighted 
-  Regression with Golden Search bandwidth optimization) showing mastery of both theory 
-  and practice
-- **Model diagnostics:** Rigorous testing (Moran's I spatial autocorrelation, VIF 
-  multicollinearity assessment, local R² validation) reflects graduate-level scientific rigor
-- **Geographic heterogeneity:** Recognition that single global coefficients mask important 
-  regional variation—thinking beyond aggregate models to local, context-dependent patterns
-- **Interpretation & insight:** Moving beyond model outputs to meaningful geographic and 
-  political economy interpretation
-
-This work exemplifies how computer science methods reveal hidden structure in complex spatial 
-data and how geographic context shapes computational outcomes—essential for geospatial 
-computer vision and applied data science graduate study.
-
 *Analysis completed: April 2025*
