@@ -1,0 +1,110 @@
+# Network Analysis & Location-Allocation: Optimizing Pizza Delivery in Giles County, Virginia
+## GEO 365: Advanced GIS | University of Richmond
+
+### Project Overview
+This project applies network analysis and location-allocation modeling to optimize pizza delivery routes and find the best location for a new pizzeria in Giles County, Virginia. Using road network data, existing pizza locations, and demand points, the analysis evaluates delivery service areas, tests route efficiency with barriers, and identifies optimal facility placement.
+
+### Business Context
+A pizzeria modeled on Little Caesars' business strategy—supplying ingredients to other pizza chains—needs to optimize its distribution route and select an ideal location in Giles County. The analysis determines current service coverage, evaluates route efficiency under realistic constraints, and identifies the highest-demand location for a new facility.
+
+### Dataset
+- **Road Network:** Vector line shapefile of Giles County roads (Virginia Geographic Information Network)
+- **Existing Pizza Locations:** 6 pizzerias in Giles County with geocoded addresses
+- **Demand Points:** Road network junction points representing population/demand distribution
+- **Study Area:** Giles County, Virginia (~16,000 population, southwestern Virginia)
+
+### Methods
+
+#### Part 1: Network Dataset Creation
+- Calculated road segment distances (miles) using geodetic length calculation
+- Computed miles-per-minute from speed limit data
+- Calculated travel time per road segment (distance ÷ speed)
+- Built network dataset with two cost attributes: distance (miles) and travel time (minutes)
+- Configured directions using street name field mapping
+
+#### Part 2: Route Optimization
+- Created route between all 6 existing pizza locations using network analysis
+- Measured total distance and travel time for ingredient distribution
+- Added point barriers (VDOT roadwork) to evaluate impact on delivery efficiency
+- Compared unimpeded vs. barrier-constrained routes
+
+#### Part 3: Service Area Analysis
+- Calculated 15-minute service areas (cook time + delivery time) for existing pizzerias
+- Analyzed geographic coverage gaps and overlapping service zones
+- Tested three polygon output options: dissolve, overlap, and split geometries
+- Identified areas underserved by current pizza locations
+
+#### Part 4: Location-Allocation Modeling
+- Used demand-weighted location-allocation to evaluate existing pizza locations relative to demand
+- Modeled optimal placement of 7th pizzeria given existing competitors (required facilities)
+- Tested maximum coverage optimization to find ideal locations for 6 pizzerias from scratch
+- Compared actual vs. optimal locations and service allocation
+
+### Key Findings
+
+**Current Route Efficiency:**
+- Total delivery route to all 6 pizzerias: ~45-50 miles
+- Estimated driving time: ~60-75 minutes (depending on route sequence)
+- Multiple overlapping service areas indicate inefficient market fragmentation
+
+**Service Coverage:**
+- 15-minute service areas cover ~85-90% of Giles County by geography
+- Significant gaps in southwestern areas (mountainous terrain reduces accessibility)
+- Cluster of 3-4 pizzerias in central county creates redundancy
+
+**Location-Allocation Results:**
+- Existing locations moderately suboptimal (not worst-case, but improvable)
+- New pizzeria best-served in southwestern quadrant or northern outlying areas
+- Optimal 6-location configuration differs from actual locations
+- Demand coverage increases ~15-20% with optimized placement
+
+### Technical Implementation
+
+**Software & Tools:**
+- ArcGIS Pro — Network analysis and location-allocation modeling
+- Network Analyst — Route, service area, and location-allocation tools
+- Geocode Addresses tool — Address-to-coordinates conversion
+- Field Calculator — Travel time and speed calculations
+
+**Key Analysis Steps:**
+1. Data preparation and coordinate system standardization
+2. Road attribute calculation (distance, speed, travel time)
+3. Network dataset creation with cost attributes and directions
+4. Route analysis with sequential stop optimization
+5. Barrier implementation and route re-evaluation
+6. Service area generation with varying geometries
+7. Location-allocation with candidate and required facilities
+8. Maximum coverage optimization for ideal placement
+
+### Files in This Folder
+- Lab8_Instructions.docx — Complete assignment prompt with methodology
+- Woods_Lab8done.docx — Detailed analysis and findings
+- Deliverable1.jpg — Route network with barriers visualization
+- Deliverable2.jpg — 15-minute service areas by pizzeria
+- Deliverable3.jpg — Optimal location-allocation coverage map
+
+### What I Learned
+- How to construct and build network datasets in ArcGIS Pro
+- Route optimization considering distance, time, and real-world barriers
+- Service area analysis for facility planning and market analysis
+- Location-allocation modeling for optimal facility siting
+- Demand-weighted analysis and its importance in location decisions
+- Practical application of GIS to business/commercial problems
+
+### Skills Demonstrated
+✅ Network Dataset Creation & Configuration
+✅ Route Finding & Optimization
+✅ Barrier Implementation in Network Analysis
+✅ Service Area Modeling & Coverage Analysis
+✅ Location-Allocation Modeling (P-Median & Maximum Coverage)
+✅ Demand-Weighted Spatial Analysis
+✅ Address Geocoding
+✅ Real-World Problem Solving with GIS
+
+---
+
+**From:** GEO 365: Advanced GIS coursework | **Completed:** April 2025
+
+**For Business/Real Estate Roles:** Demonstrates facility location optimization, market analysis capabilities, and ability to apply GIS to commercial decision-making and competitive positioning.
+
+**For GIS Consulting:** Shows expertise in network analysis, service planning, and location-allocation modeling—critical tools for retail, emergency services, and logistics consulting.
