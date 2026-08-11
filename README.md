@@ -44,7 +44,7 @@ I analyzed sentiment across Taylor Swift's 10+ studio albums using two sentiment
 - **Methods:** AFINN & Bing Sentiment Lexicons, Violin & Box Plots, Temporal Visualization
 - **Dataset:** Taylor Swift Complete Lyrics Corpus (~600 songs)
 
-[View Project](./03_Taylor_Swift_Sentiment/) | [View Rendered Output](./03_Taylor_Swift_Sentiment/Taylor_Swift_Sentiment.html) | 
+[View Project](./03_Taylor_Swift_Sentiment/) | [View Rendered Output](./03_Taylor_Swift_Sentiment/Taylor_Swift_Sentiment.html)  
 
 ---
 
