@@ -18,7 +18,7 @@ Using topic modeling (LDA) and sentiment analysis, I compared the lyrical styles
 - **Methods:** LDA Topic Modeling, AFINN Sentiment Lexicon, Tidyverse, ggplot2
 - **Dataset:** Complete Beatles discography (~200 songs)
 
-[View Project](./01_Beatles_Lyrics_Analysis/) | [View Rendered Output](./01_Beatles_Lyrics_Analysis/Beatles_Lyrics_Analysis.html) | [Full Report](./01_Beatles_Lyrics_Analysis/Beatles_Lyrics_Analysis.html)
+[View Project](./01_Beatles_Lyrics_Analysis/) | [View Rendered Output](./01_Beatles_Lyrics_Analysis/Beatles_Lyrics_Analysis.html)
 
 ---
 
@@ -31,7 +31,7 @@ I classified 50,000 IMDb movie reviews as positive or negative using two approac
 - **Methods:** TF-IDF, Word Embeddings (GloVe), Logistic Regression, Cross-Validation, Hyperparameter Tuning
 - **Dataset:** Stanford Large Movie Review Dataset (50,000 reviews)
 
-[View Project](./02_IMDb_Review_Classification/) | [View Rendered Output](./02_IMDb_Review_Classification/IMDb_Review_Classification.html) | [Full Report](./02_IMDb_Review_Classification/IMDb_Review_Classification.html)
+[View Project](./02_IMDb_Review_Classification/) | [View Rendered Output](./02_IMDb_Review_Classification/IMDb_Review_Classification.html) 
 
 ---
 
@@ -44,7 +44,7 @@ I analyzed sentiment across Taylor Swift's 10+ studio albums using two sentiment
 - **Methods:** AFINN & Bing Sentiment Lexicons, Violin & Box Plots, Temporal Visualization
 - **Dataset:** Taylor Swift Complete Lyrics Corpus (~600 songs)
 
-[View Project](./03_Taylor_Swift_Sentiment/) | [View Rendered Output](./03_Taylor_Swift_Sentiment/Taylor_Swift_Sentiment.html) | [Full Report](./03_Taylor_Swift_Sentiment/Taylor_Swift_Sentiment.html)
+[View Project](./03_Taylor_Swift_Sentiment/) | [View Rendered Output](./03_Taylor_Swift_Sentiment/Taylor_Swift_Sentiment.html) | 
 
 ---
 
@@ -58,7 +58,7 @@ Investigating nutritional alternatives for peanut allergy sufferers, I compared 
 - **Dataset:** True Food Database (32 products)
 - **Collaborative Project:** Completed with Anush Margaryan
 
-[View Project](./04_Peanut_vs_Almond_Butter/) | [View Rendered Output](./04_Peanut_vs_Almond_Butter/Peanut_vs_Almond_Butter.html) | [Full Report](./04_Peanut_vs_Almond_Butter/Peanut_vs_Almond_Butter.html)
+[View Project](./04_Peanut_vs_Almond_Butter/) | [View Rendered Output](./04_Peanut_vs_Almond_Butter/Peanut_vs_Almond_Butter.html) 
 
 ---
 
