@@ -1,0 +1,3 @@
+Data downloaded: 2026-10-28 01:53:11 UTC
+Seasons: 2015 - 2026
+Source: nflverse release files (the same files nflreadr downloads)

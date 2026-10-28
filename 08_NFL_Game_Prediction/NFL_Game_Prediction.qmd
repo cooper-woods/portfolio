@@ -1,0 +1,935 @@
+---
+title: "Can a Homemade Model Keep Up With Vegas?"
+subtitle: "Forecasting NFL games with public data and testing the forecasts against the betting market, 2024–2026"
+author: "*Cooper Woods*"
+institute: "University of Richmond"
+date: 10/28/2026
+format:
+  html:
+    embed-resources: true
+    code-fold: true
+    code-summary: "Show code"
+    toc-depth: 2
+    fig-width: 8
+    fig-height: 4.8
+editor: source
+toc: true
+execute:
+  warning: false
+  message: false
+---
+
+## At a Glance
+
+**The question:** sportsbooks publish a prediction for every NFL game, and those predictions are famously hard to beat. If a team, a media company, or a fan wanted their *own* forecasting model, built only from free public data, how close could it get to Vegas?
+
+**What I did:** I built a model that predicts the final score of every NFL game, then tested it on **651 real games** from the 2024 season through Week 7 of 2026. Every prediction was made using only games that had already been played, exactly as a real forecaster would have to work. I compared it to the Vegas betting line for the same games.
+
+::: {.callout-important}
+## Key findings
+- **Vegas still wins, but only barely.** The model's predicted point margin missed the final result by **about 10 points per game**, compared with **about 9.6 for Vegas**. The gap is small but consistent, so it is statistically real.
+- **It picked the winner in about 63% of games**, versus about 68% for Vegas and 53% for simply picking the home team.
+- **Fancier was not better.** A simple regression did just as well as a machine-learning model (XGBoost).
+- **Its confidence can be trusted.** When the model gave a team a 70% chance, that team won about 70% of the time.
+- **It does not beat the betting market.** Betting on the model's disagreements with Vegas would have lost money.
+:::
+
+```{r}
+#| label: setup
+#| include: false
+
+# Run every chunk from this file's folder so relative paths work both when
+# rendering and when running chunks one at a time in RStudio.
+doc_dir <- tryCatch(
+  if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable())
+    dirname(rstudioapi::getSourceEditorContext()$path) else NULL,
+  error = function(e) NULL)
+if (is.null(doc_dir) || doc_dir == "" || doc_dir == ".") doc_dir <- getwd()
+knitr::opts_knit$set(root.dir = doc_dir)
+```
+
+::: {.callout-note collapse="true"}
+## How to read this notebook, plus a quick glossary
+You don't need a stats or football background. Each section ends with a green **"What this means"** box that explains the result in plain English. The R code is hidden; click **Show code** to see any of it.
+
+- **Margin:** the home team's points minus the away team's points. A margin of +7 means the home team won by 7.
+- **Point spread:** Vegas's prediction of the margin. "Lions -3.5" means the Lions are expected to win by about 3.5.
+- **Total (over/under):** Vegas's prediction of the combined points scored by both teams.
+- **Moneyline:** the betting price for picking the outright winner (explained below).
+- **EPA (expected points added):** a play-by-play measure of how much each play helped a team's chances of scoring. Averaged over many plays, it is one of the best public measures of how good a team really is.
+- **Average miss:** how many points a prediction was off by, on average. Lower is better.
+- **Brier score:** a grade for probability forecasts, from 0 (perfect) to 0.25 (no better than a coin flip). Lower is better.
+- **Walk-forward testing:** every prediction uses only games that had already been played. Nothing from the future leaks into a forecast.
+:::
+
+## Why This Question Matters
+
+Sportsbooks publish three predictions for every game: the **point spread**, the **total**, and the **moneyline**. Professionals set them, and millions of dollars of bets push them around until kickoff. Decades of research find them close to impossible to beat consistently (Gandar et al., 1988; Levitt, 2004).
+
+That makes Vegas the perfect **benchmark**. Anyone building a forecasting tool, whether a team's analytics staff, a sports media company, or a fantasy platform, has to answer the same question first: *is our model good enough to be worth using, or should we just trust the betting line?*
+
+This project answers that with four questions:
+
+1. **How close can a transparent model built from free public data get to Vegas?**
+2. **Does a more complex model do better?** I compare a simple baseline, two regression models, and a machine-learning model (XGBoost).
+3. **When the model disagrees with Vegas, is it ever right in a way that matters?**
+4. **What does this look like on a real week of games?** Week 7 of the 2026 season is the spotlight.
+
+### Library Setup
+
+```{r}
+#| label: libraries
+
+packages <- c("tidyverse", "tidymodels", "glmnet", "xgboost",
+              "slider", "lubridate", "ggrepel", "gt", "broom")
+for (pkg in packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) install.packages(pkg)
+  library(pkg, character.only = TRUE)
+}
+tidymodels_prefer()
+set.seed(389)
+
+theme_set(
+  theme_minimal(base_size = 13) +
+    theme(plot.title = element_text(face = "bold", size = 15),
+          plot.title.position = "plot",
+          plot.subtitle = element_text(color = "gray35", margin = margin(b = 10)),
+          plot.caption = element_text(color = "gray45", hjust = 0),
+          panel.grid.minor = element_blank(),
+          legend.position = "top", legend.justification = "left"))
+
+# One fixed color per model, used in every chart
+model_levels <- c("Baseline", "Linear", "Ridge", "XGBoost", "Vegas")
+model_cols <- c(Baseline = "#9a9a96", Linear = "#1baf7a", Ridge = "#2a78d6",
+                XGBoost = "#6250d6", Vegas = "#eb6834")
+actual_col <- "#222222"
+
+# Save each key figure so the written report can use it
+dir.create("figures", showWarnings = FALSE)
+show_and_save <- function(p, name, width = 8, height = 4.8) {
+  ggsave(file.path("figures", paste0(name, ".png")), p, width = width,
+         height = height, dpi = 200, bg = "white")
+  p
+}
+```
+
+## The Data
+
+All data come from the free, open-source [**nflverse**](https://github.com/nflverse) project. The companion script `01_get_data.R` downloads it with the `nflreadr` R package and saves small CSV files in `data/`, so anyone can reproduce these results exactly.
+
+| What | Where it comes from |
+|---|---|
+| Every game's final score and **closing** Vegas line (spread, total, moneyline), plus rest days, stadium roof, weather and starting quarterbacks | `nflreadr::load_schedules()`, from Lee Sharpe's [nfldata](https://github.com/nflverse/nfldata) |
+| Every play since 2015, with expected points added (EPA) | `nflreadr::load_pbp()`, from [nflfastR](https://www.nflfastr.com/) (Carl & Baldwin) |
+| Week 7 2026 **opening** lines (hand-collected) | DraftKings, as published by *Sports Illustrated* on Oct 19, 2026 (`data/week7_opening_lines.csv`) |
+
+The script condenses about 500,000 plays into one row per team per game: how efficient the offense and defense were, measured by EPA per play.
+
+```{r}
+#| label: load-data
+
+games   <- read_csv("data/games.csv", show_col_types = FALSE)
+tg      <- read_csv("data/team_game_stats.csv", show_col_types = FALSE)
+opening <- read_csv("data/week7_opening_lines.csv", show_col_types = FALSE)
+cat(readLines("data/DATA_SNAPSHOT.txt"), sep = "\n")
+
+games |>
+  filter(!is.na(result)) |>
+  count(season, name = "games") |>
+  pivot_wider(names_from = season, values_from = games) |>
+  gt() |> tab_header(title = "Completed regular-season games by season")
+```
+
+::: {.callout-note collapse="true"}
+## Technical note: sign conventions
+nflverse stores `result` as **home score minus away score** and `spread_line` as the **home team's expected margin** (positive means the home team is favored). Sportsbooks print the same number with the opposite sign: a home favorite by 3 is listed as "-3". Everything is modeled on the nflverse scale and converted to sportsbook notation only for display.
+:::
+
+## How Vegas Odds Work
+
+### The three numbers Vegas publishes
+
+**Point spread.** A head start given to the underdog so that betting either side is roughly a coin flip. If the Lions are **-3.5** against the Packers, a bet on Detroit wins only if Detroit wins by 4 or more; a bet on Green Bay wins if Green Bay wins outright or loses by 3 or fewer. In effect, the spread is Vegas's prediction of the **margin of victory**.
+
+**Total (over/under).** Vegas's prediction of the combined score. Bettors pick whether the real total will land over or under it.
+
+**Moneyline.** A bet on who wins outright, priced in **American odds**:
+
+- A **negative** number is how much you must bet to win \$100. At **-200**, betting \$200 wins \$100.
+- A **positive** number is how much a \$100 bet wins. At **+170**, betting \$100 wins \$170.
+
+### Turning odds into probabilities
+
+American odds convert directly to an **implied probability** (Petrella, 2021):
+
+$$
+p = \begin{cases}
+\dfrac{|odds|}{|odds| + 100} & \text{for a favorite (negative odds)}\\[2ex]
+\dfrac{100}{odds + 100} & \text{for an underdog (positive odds)}
+\end{cases}
+$$
+
+### The vig: how the sportsbook gets paid
+
+If you add up the implied probabilities for both teams, you get **more than 100%**. The extra is the **vig** (or "juice"), the sportsbook's built-in cut. A standard spread bet is priced at **-110** on both sides, which means a bettor has to win **52.4% of the time just to break even**.
+
+To compare Vegas's probabilities fairly with a model's, the vig has to be removed. The standard method divides each side's implied probability by the total of both (Petrella, 2021).
+
+```{r}
+#| label: vig-example
+
+ml_to_prob <- function(ml) if_else(ml < 0, -ml / (-ml + 100), 100 / (ml + 100))
+prob_to_ml <- function(p)  if_else(p >= 0.5, -100 * p / (1 - p), 100 * (1 - p) / p)
+
+tibble(Side = c("Favorite", "Underdog"), `American odds` = c(-200, 170)) |>
+  mutate(`Implied probability` = ml_to_prob(`American odds`),
+         `Fair probability (vig removed)` = `Implied probability` / sum(`Implied probability`)) |>
+  gt() |>
+  fmt_percent(contains("probability"), decimals = 1) |>
+  tab_header(title = "Worked example: removing the vig",
+             subtitle = "The two sides add up to 103.7%; the extra 3.7% is the sportsbook's cut")
+```
+
+### From a predicted margin to a win probability
+
+A margin prediction and a win probability are two ways of saying the same thing. Stern (1991) showed that actual NFL margins land in a **bell curve around the predicted margin**, spread out by about 14 points either way. So if a model predicts the home team wins by $\hat{m}$ points, with a typical error of $\sigma$:
+
+$$
+P(\text{home team wins}) = \Phi\left(\frac{\hat m}{\sigma}\right)
+$$
+
+where $\Phi$ is the standard normal curve. A 3-point favorite wins about 58% of the time; a 7-point favorite about 70%. This one idea lets a single model produce **everything a sportsbook publishes**: a score, a winner, a spread, a total, a win probability and fair moneyline odds.
+
+### Opening line vs. closing line
+
+Sportsbooks post an **opening line** early in the week. As news arrives (injuries, weather, bets from professional gamblers), the line **moves**, and the number at kickoff is the **closing line**. The closing line contains the most information and is generally the most accurate forecast available, so it is the benchmark used throughout this project.
+
+::: {.callout-tip}
+## What this means
+Every Vegas line is really a prediction: the spread predicts the margin, the total predicts the combined score, and the moneyline (with the vig removed) predicts each team's chance of winning. That makes Vegas a forecast that can be graded exactly like a model.
+:::
+
+## Building the Model
+
+### What the model knows about each team
+
+Before each game, the model summarizes how good each team has been **in its previous games only**:
+
+- **Offensive and defensive efficiency** (EPA per play, ignoring garbage time at the end of blowouts).
+- **Point differential:** how much a team has been outscoring opponents.
+- **Points scored and allowed** (for predicting totals).
+
+Recent games count more than older ones: each game back counts 90% as much as the one after it, and last season's games count half as much once a new season starts. That way early-season ratings start from last year's form instead of from zero.
+
+It also knows the context of each game:
+
+- **Quarterback change:** is a team starting someone other than its usual quarterback? This is a simple stand-in for the most important injury in football.
+- **Rest:** days since each team's last game.
+- **Division game**, **neutral site** (like the Paris game) and **dome**.
+- **Weather** for totals: wind and temperature. Where weather had not been recorded yet (most of 2026), the stadium's typical value for that month is used.
+- **League scoring trend:** the average total of recent games, so the model adapts if scoring goes up or down league-wide.
+
+```{r}
+#| label: features
+
+DECAY <- 0.90; OFFSEASON <- 0.50; PRIOR_N <- 4
+
+# Weighted average of PREVIOUS games only (no current-game leakage).
+# A small prior (PRIOR_N games of league-average play) keeps one early
+# blowout from dominating a team's rating.
+ewma_pre <- function(x, season, prior = 0) {
+  n <- length(x); out <- numeric(n)
+  for (i in seq_len(n)) {
+    if (i == 1) { out[i] <- prior; next }
+    j  <- seq_len(i - 1)
+    ok <- !is.na(x[j])
+    k  <- cumsum(rev(ok))[rev(seq_along(j))]          # games ago (played games only)
+    w  <- DECAY^(k - 1) * OFFSEASON^(season[i] - season[j])
+    w[!ok] <- 0
+    out[i] <- (sum(w * replace_na(x[j], 0)) + prior * PRIOR_N) / (sum(w) + PRIOR_N)
+  }
+  out
+}
+
+team_sched <- bind_rows(
+  games |> transmute(game_id, season, week, team = home_team, pts_for = home_score,
+                     pts_against = away_score, qb_id = home_qb_id),
+  games |> transmute(game_id, season, week, team = away_team, pts_for = away_score,
+                     pts_against = home_score, qb_id = away_qb_id)) |>
+  left_join(tg |> select(game_id, team, off_epa_neu, def_epa_neu), by = c("game_id", "team")) |>
+  mutate(pd = pts_for - pts_against) |>
+  arrange(team, season, week)
+
+team_feat <- team_sched |>
+  group_by(team) |>
+  mutate(
+    r_off_epa = ewma_pre(off_epa_neu, season),
+    r_def_epa = ewma_pre(def_epa_neu, season),
+    r_pd      = ewma_pre(pd, season),
+    r_pts_for = ewma_pre(pts_for, season, prior = 22),
+    r_pts_ag  = ewma_pre(pts_against, season, prior = 22),
+    # QB change: starter differs from the team's most common starter in its last 6 games
+    usual_qb  = map_chr(row_number(), \(i) {
+      prev <- qb_id[max(1, i - 6):(i - 1)]; prev <- prev[!is.na(prev)]
+      if (i == 1 || length(prev) == 0) NA_character_
+      else names(sort(table(prev), decreasing = TRUE))[1]
+    }),
+    qb_change = as.integer(!is.na(usual_qb) & !is.na(qb_id) & qb_id != usual_qb)) |>
+  ungroup() |>
+  select(game_id, team, starts_with("r_"), qb_change)
+
+model_df <- games |>
+  left_join(team_feat |> rename_with(\(x) paste0("home_", x), -game_id),
+            by = c("game_id", "home_team")) |>
+  left_join(team_feat |> rename_with(\(x) paste0("away_", x), -game_id),
+            by = c("game_id", "away_team")) |>
+  mutate(
+    neutral   = as.integer(location == "Neutral"),
+    dome      = as.integer(roof %in% c("dome", "closed")),
+    rest_diff = home_rest - away_rest,
+    d_off_epa = home_r_off_epa - away_r_off_epa,     # margin features: home minus away
+    d_def_epa = home_r_def_epa - away_r_def_epa,
+    d_pd      = home_r_pd - away_r_pd,
+    s_off_epa = home_r_off_epa + away_r_off_epa,     # total features: sums
+    s_def_epa = home_r_def_epa + away_r_def_epa,
+    s_pts     = home_r_pts_for + away_r_pts_for + home_r_pts_ag + away_r_pts_ag,
+    any_qb_change = pmax(home_qb_change, away_qb_change),
+    wind_f = if_else(dome == 1, 0, wind),
+    temp_f = if_else(dome == 1, 70, temp)) |>
+  arrange(gameday, gametime) |>
+  mutate(league_total = slide_dbl(total, \(x) mean(x, na.rm = TRUE),
+                                  .before = 64, .after = -1),
+         league_total = replace_na(league_total, 44))
+
+# Weather "climatology" for games without recorded weather
+clim <- model_df |>
+  filter(dome == 0, !is.na(wind)) |>
+  mutate(month = month(gameday)) |>
+  group_by(home_team, month) |>
+  summarize(clim_wind = median(wind), clim_temp = median(temp), .groups = "drop")
+
+model_df <- model_df |>
+  mutate(month = month(gameday)) |>
+  left_join(clim, by = c("home_team", "month")) |>
+  mutate(wind_f = coalesce(wind_f, clim_wind, median(wind, na.rm = TRUE)),
+         temp_f = coalesce(temp_f, clim_temp, median(temp, na.rm = TRUE))) |>
+  select(-month, -clim_wind, -clim_temp)
+
+df     <- model_df |> filter(season >= 2016)   # 2015 only warms up the ratings
+played <- df |> filter(!is.na(result))
+```
+
+### Four models, from simplest to most complex
+
+Each model predicts two things: the **margin** (home points minus away points) and the **total** (combined points). The predicted score follows directly: home = (total + margin) / 2, away = (total − margin) / 2.
+
+| Model | In plain English |
+|---|---|
+| **Baseline** | Always predicts the home team wins by the average home-field edge (about 2 points). The "no model at all" floor. |
+| **Linear regression** | Adds up the team ratings and context, each with a weight learned from past games. |
+| **Ridge regression** | The same, but it keeps any one weight from growing too large. This helps when the inputs overlap, as offense, defense and point differential do (Hoerl & Kennard, 1970). |
+| **XGBoost** | A machine-learning model built from hundreds of small decision trees. It can find patterns the regressions can't (Chen & Guestrin, 2016). |
+| **Vegas closing line** | The benchmark to beat. |
+
+```{r}
+#| label: model-setup
+
+margin_vars <- c("d_off_epa", "d_def_epa", "d_pd", "rest_diff", "neutral",
+                 "div_game", "home_qb_change", "away_qb_change")
+total_vars  <- c("s_off_epa", "s_def_epa", "s_pts", "league_total", "dome",
+                 "wind_f", "temp_f", "any_qb_change", "div_game")
+
+make_rec <- function(target, vars, d) {
+  recipe(as.formula(paste(target, "~", paste(vars, collapse = " + "))), data = d) |>
+    step_normalize(all_numeric_predictors())
+}
+
+specs <- list(
+  linear = linear_reg() |> set_engine("lm"),
+  ridge  = linear_reg(penalty = tune(), mixture = 0) |> set_engine("glmnet"),
+  xgb    = boost_tree(trees = tune(), tree_depth = tune(), learn_rate = tune(),
+                      min_n = tune()) |> set_engine("xgboost") |> set_mode("regression"))
+```
+
+### How the models were tested
+
+The most important rule in sports forecasting is to **never let the model see the future**. A common shortcut, random cross-validation, would let a model learn from December games and then "predict" September games of the same season. Instead, the data are split strictly by time:
+
+```{r}
+#| label: fig-timeline
+#| fig-height: 2.6
+
+timeline <- tribble(
+  ~stage,                                         ~start, ~end,
+  "Warm-up: build first team ratings",              2015,  2016,
+  "Tuning: choose model settings",                  2016,  2024,
+  "Validation: pick the best model (544 games)",    2024,  2026,
+  "Final test: 2026 Weeks 1–7 (107 games)",         2026,  2026.45) |>
+  mutate(stage = fct_rev(fct_inorder(stage)))
+
+p_timeline <- ggplot(timeline) +
+  geom_rect(aes(xmin = start, xmax = end, ymin = as.numeric(stage) - 0.38,
+                ymax = as.numeric(stage) + 0.38, fill = stage), color = "white", linewidth = 1) +
+  scale_fill_manual(values = c("#eb6834", "#2a78d6", "#7a7a76", "#b8b8b4"), guide = "none") +
+  scale_x_continuous(breaks = c(2015, 2016, 2018, 2020, 2022, 2024, 2026),
+                     expand = expansion(add = c(0.1, 0.6))) +
+  scale_y_continuous(breaks = 1:4, labels = levels(timeline$stage)) +
+  labs(title = "Training only on the past, testing on the future",
+       subtitle = "In validation and test, models are refit every week on past games only",
+       x = NULL, y = NULL) +
+  theme(panel.grid = element_blank(), axis.text.y = element_text(face = "bold"))
+show_and_save(p_timeline, "01_timeline", height = 2.8)
+```
+
+- **Tuning (2016–2023):** model settings were chosen with **season-ahead cross-validation** (Hyndman & Athanasopoulos, 2021): train on all seasons before year *s*, test on year *s*, repeated for 2019–2023.
+- **Validation (2024–2025, 544 games):** each week, every model was retrained on all earlier games and predicted that week. These results chose the final model.
+- **Final test (2026 Weeks 1–7, 107 games):** the same walk-forward process, run once on games the model selection never saw.
+
+```{r}
+#| label: tuning
+#| cache: true
+
+tune_df <- played |> filter(season <= 2023)
+
+folds <- manual_rset(
+  map(2019:2023, \(s) make_splits(
+    list(analysis = which(tune_df$season < s), assessment = which(tune_df$season == s)),
+    data = tune_df)),
+  paste0("Assess_", 2019:2023))
+
+tune_target <- function(target, vars) {
+  rec <- make_rec(target, vars, tune_df)
+  lin <- fit_resamples(workflow(rec, specs$linear), folds, metrics = metric_set(rmse, mae))
+  rdg <- tune_grid(workflow(rec, specs$ridge), folds,
+                   grid = tibble(penalty = 10^seq(-2, 1.5, length.out = 30)),
+                   metrics = metric_set(rmse, mae))
+  xgb <- tune_grid(workflow(rec, specs$xgb), folds,
+                   grid = grid_space_filling(trees(c(100, 800)), tree_depth(c(1, 4)),
+                                             learn_rate(c(-2.5, -1)), min_n(c(10, 60)),
+                                             size = 25),
+                   metrics = metric_set(rmse, mae))
+  list(ridge = select_best(rdg, metric = "rmse"), xgb = select_best(xgb, metric = "rmse"),
+       cv = bind_rows(
+         collect_metrics(lin) |> mutate(model = "Linear"),
+         show_best(rdg, metric = "rmse", n = 1) |> mutate(model = "Ridge"),
+         show_best(xgb, metric = "rmse", n = 1) |> mutate(model = "XGBoost")) |>
+         filter(.metric == "rmse") |> select(model, rmse = mean, std_err))
+}
+
+tuned_margin <- tune_target("result", margin_vars)
+tuned_total  <- tune_target("total",  total_vars)
+```
+
+::: {.callout-note collapse="true"}
+## Technical details: cross-validation results and chosen settings
+
+```{r}
+#| label: tuning-results
+
+vegas_cv <- tune_df |> filter(season >= 2019) |>
+  summarize(margin = sqrt(mean((spread_line - result)^2)),
+            total  = sqrt(mean((total_line - total)^2)))
+
+bind_rows(tuned_margin$cv |> mutate(target = "Margin"),
+          tibble(model = "Vegas", rmse = vegas_cv$margin, std_err = NA, target = "Margin"),
+          tuned_total$cv |> mutate(target = "Total"),
+          tibble(model = "Vegas", rmse = vegas_cv$total, std_err = NA, target = "Total")) |>
+  pivot_wider(names_from = target, values_from = c(rmse, std_err)) |>
+  select(model, rmse_Margin, std_err_Margin, rmse_Total, std_err_Total) |>
+  gt() |> fmt_number(decimals = 2) |> sub_missing() |>
+  cols_label(model = "Model", rmse_Margin = "Margin RMSE", std_err_Margin = "SE",
+             rmse_Total = "Total RMSE", std_err_Total = "SE") |>
+  tab_header(title = "Season-ahead cross-validation, 2019–2023 (points)")
+
+bind_rows(tuned_margin$ridge |> mutate(target = "Margin"),
+          tuned_total$ridge |> mutate(target = "Total")) |>
+  select(target, penalty) |> gt() |> fmt_number(penalty, decimals = 3) |>
+  tab_header(title = "Selected ridge penalties")
+
+bind_rows(tuned_margin$xgb |> mutate(target = "Margin"),
+          tuned_total$xgb |> mutate(target = "Total")) |>
+  select(target, trees, tree_depth, learn_rate, min_n) |> gt() |>
+  fmt_number(learn_rate, decimals = 4) |>
+  tab_header(title = "Selected XGBoost settings")
+```
+
+All three models land within a tenth of a point of each other. The ridge penalty chosen for the margin model is the smallest one tested (shrinkage barely helps with eight inputs), and XGBoost's best version uses **one-split trees**, meaning it chose not to model any interactions at all. The decay (0.90) and offseason (0.50) weights were also checked with a small grid search; results barely changed, so round values were kept.
+:::
+
+```{r}
+#| label: walk-forward
+#| cache: true
+
+finalize <- function(tuned) list(
+  Linear  = specs$linear,
+  Ridge   = finalize_model(specs$ridge, tuned$ridge),
+  XGBoost = finalize_model(specs$xgb, tuned$xgb))
+fs_m <- finalize(tuned_margin); fs_t <- finalize(tuned_total)
+
+# Refit every model using only games before (season s, week w), then predict week w
+predict_week <- function(s, w) {
+  train <- played |> filter(season < s | (season == s & week < w))
+  test  <- df |> filter(season == s, week == w)
+  hfa   <- train |> filter(neutral == 0, season >= s - 3) |> pull(result) |> mean()
+  out <- test |>
+    select(game_id, season, week, home_team, away_team, result, total, spread_line,
+           total_line, home_moneyline, away_moneyline) |>
+    mutate(m_Baseline = hfa * (1 - test$neutral), t_Baseline = test$league_total,
+           sd_Baseline = sd(train$result - hfa))
+  for (nm in names(fs_m)) {
+    fm <- fit(workflow(make_rec("result", margin_vars, train), fs_m[[nm]]), train)
+    ft <- fit(workflow(make_rec("total",  total_vars,  train), fs_t[[nm]]), train)
+    out[[paste0("m_", nm)]]  <- predict(fm, test)$.pred
+    out[[paste0("t_", nm)]]  <- predict(ft, test)$.pred
+    out[[paste0("sd_", nm)]] <- sd(train$result - predict(fm, train)$.pred)
+  }
+  out
+}
+
+bt_weeks <- df |>
+  filter(season %in% 2024:2025 | (season == 2026 & week <= 7)) |>
+  distinct(season, week) |> arrange(season, week)
+
+wf <- map2_dfr(bt_weeks$season, bt_weeks$week, predict_week) |>
+  mutate(period = if_else(season == 2026, "Final test (2026 Wks 1-7)", "Validation (2024-25)"),
+         period = factor(period, c("Validation (2024-25)", "Final test (2026 Wks 1-7)")),
+         p_raw_h = ml_to_prob(home_moneyline), p_raw_a = ml_to_prob(away_moneyline),
+         p_vegas = p_raw_h / (p_raw_h + p_raw_a))
+```
+
+```{r}
+#| label: scoring
+
+long <- map_dfr(model_levels, \(nm) wf |>
+  transmute(game_id, season, week, period, home_team, away_team, result, total,
+            spread_line, total_line, model = nm,
+            m = if (nm == "Vegas") spread_line else .data[[paste0("m_", nm)]],
+            t = if (nm == "Vegas") total_line  else .data[[paste0("t_", nm)]],
+            p = if (nm == "Vegas") p_vegas else pnorm(m / .data[[paste0("sd_", nm)]]))) |>
+  mutate(model = factor(model, model_levels))
+
+scored <- long |>
+  filter(!is.na(result)) |>
+  mutate(home_win = as.numeric(result > 0), tie = result == 0,
+         p = pmin(pmax(p, 0.01), 0.99))
+
+summarize_scores <- function(d) d |>
+  summarize(Games = n(),
+            `Avg. margin miss` = mean(abs(m - result)),
+            `Winners picked`   = sum((m > 0) == (result > 0) & !tie) / sum(!tie),
+            `Brier score`      = mean((p - home_win)[!tie]^2),
+            `Avg. total miss`  = mean(abs(t - total)),
+            .groups = "drop")
+
+results_period <- scored |> group_by(period, model) |> summarize_scores()
+results_all    <- scored |> group_by(model) |> summarize_scores()
+```
+
+## Results
+
+### 1. Every model beats guessing, but none catch Vegas
+
+```{r}
+#| label: fig-headline
+#| fig-height: 4.6
+
+headline <- results_all |>
+  select(model, `Avg. margin miss`, `Winners picked`) |>
+  pivot_longer(-model) |>
+  mutate(label = if_else(name == "Winners picked", percent(value, 0.1), number(value, 0.01)),
+         name = factor(name, c("Winners picked", "Avg. margin miss"),
+                       c("Winners picked (higher = better)",
+                         "Avg. miss on margin, pts (lower = better)")))
+
+p_headline <- ggplot(headline, aes(value, fct_rev(model), fill = model)) +
+  geom_col(width = 0.68) +
+  geom_text(aes(label = label), hjust = -0.12, size = 4, color = "gray15") +
+  facet_wrap(~name, scales = "free_x") +
+  scale_fill_manual(values = model_cols, guide = "none") +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.28)), labels = NULL) +
+  labs(title = "The models close most of the gap between guessing and Vegas",
+       subtitle = sprintf("%d games, 2024 to 2026 Week 7, all predicted before kickoff",
+                         results_all$Games[1]),
+       x = NULL, y = NULL) +
+  theme(panel.grid = element_blank(), strip.text = element_text(face = "bold", hjust = 0),
+        axis.text.y = element_text(size = 12, face = "bold"))
+show_and_save(p_headline, "02_headline", height = 4.4)
+```
+
+```{r}
+#| label: results-table
+
+results_period |>
+  gt(groupname_col = "period", rowname_col = "model") |>
+  fmt_number(c(`Avg. margin miss`, `Avg. total miss`), decimals = 2) |>
+  fmt_number(`Brier score`, decimals = 3) |>
+  fmt_percent(`Winners picked`, decimals = 1) |>
+  cols_label(`Avg. margin miss` = "Avg. margin miss (pts)",
+             `Avg. total miss` = "Avg. total miss (pts)") |>
+  tab_header(title = "Results by period",
+             subtitle = "Lower is better for every column except Winners picked") |>
+  tab_style(style = cell_text(weight = "bold", color = model_cols[["Vegas"]]),
+            locations = cells_stub(rows = model == "Vegas")) |>
+  tab_style(style = cell_text(weight = "bold", color = model_cols[["Ridge"]]),
+            locations = cells_stub(rows = model == "Ridge"))
+```
+
+::: {.callout-tip}
+## What this means
+Always picking the home team gets about half the winners right. Adding team ratings jumps that to the low 60s, close to Vegas's upper 60s. The three real models are almost identical to each other, so **a more complex model bought nothing.** The results hold up on the 2026 games, which were never used to choose the model.
+:::
+
+#### Choosing the final model
+
+On the validation seasons, XGBoost is ahead by less than a tenth of a point, far less than the normal season-to-season noise (about 0.4 points). When models are that close, the standard practice is the **one-standard-error rule**: pick the simplest model that is within noise of the best (Hastie, Tibshirani & Friedman, 2009). I chose **ridge regression**. It is as easy to explain as a linear regression, and it stays stable when its overlapping inputs move together. The rest of this notebook focuses on ridge versus Vegas.
+
+### 2. Head to head, Vegas is better by less than half a point
+
+```{r}
+#| label: paired-test
+
+paired <- scored |>
+  filter(model %in% c("Ridge", "Vegas")) |>
+  select(game_id, model, m, result) |>
+  pivot_wider(names_from = model, values_from = m) |>
+  mutate(diff = abs(Ridge - result) - abs(Vegas - result))
+
+tt <- t.test(paired$diff)
+ridge_closer <- mean(abs(paired$Ridge - paired$result) < abs(paired$Vegas - paired$result))
+
+tidy(tt) |>
+  transmute(`Games` = nrow(paired),
+            `Extra miss per game (pts)` = estimate,
+            `95% CI` = sprintf("%.2f to %.2f", conf.low, conf.high),
+            `p-value` = p.value,
+            `Games where model was closer` = ridge_closer) |>
+  gt() |> fmt_number(`Extra miss per game (pts)`, decimals = 2) |>
+  fmt_scientific(`p-value`, decimals = 1) |>
+  fmt_percent(`Games where model was closer`, decimals = 0) |>
+  tab_header(title = "Paired comparison on the same games: ridge vs. Vegas",
+             subtitle = "Positive = the model missed by more than Vegas")
+```
+
+To compare fairly, I looked at the **same games** for both forecasts and tested whether the model's average miss was larger than Vegas's (a paired t-test, a simple version of the Diebold & Mariano, 1995, forecast comparison).
+
+```{r}
+#| label: fig-agreement
+#| fig-height: 5.6
+
+agree <- wf |> filter(!is.na(result))
+r_agree <- cor(agree$m_Ridge, agree$spread_line)
+
+p_agree <- ggplot(agree, aes(spread_line, m_Ridge)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray55") +
+  geom_point(color = model_cols[["Ridge"]], alpha = 0.45, size = 2) +
+  annotate("text", x = -13, y = 12, hjust = 0, size = 4, color = "gray20",
+           label = sprintf("Correlation = %.2f", r_agree)) +
+  coord_equal(xlim = c(-16, 16), ylim = c(-16, 16)) +
+  labs(title = "Model and Vegas mostly agree",
+       subtitle = "Each dot is one game; dashed line = exact agreement",
+       x = "Vegas predicted home margin (points)", y = "Model predicted home margin (points)",
+       caption = "Positive = home team favored.")
+show_and_save(p_agree, "03_agreement", width = 6.5, height = 6.2)
+```
+
+::: {.callout-tip}
+## What this means
+The model and Vegas usually agree on who is better and by roughly how much. Across the same games, the model misses the final margin by about 0.4 more points per game than Vegas. That gap is too consistent to be luck, so **Vegas really is better, but only slightly**, and the model was still closer to the final score than Vegas in **`r percent(ridge_closer)` of individual games**.
+:::
+
+### 3. The model's percentages are trustworthy
+
+A forecast that says "70%" should be right about 70% of the time. To check, I grouped every prediction into bins (50–60%, 60–70%, and so on) and compared each bin's average forecast with how often the home team actually won (Brier, 1950).
+
+```{r}
+#| label: fig-calibration
+#| fig-height: 5.6
+
+calib <- scored |>
+  filter(model %in% c("Ridge", "Vegas"), !tie) |>
+  mutate(bin = cut(p, breaks = seq(0, 1, 0.1), include.lowest = TRUE)) |>
+  group_by(model, bin) |>
+  summarize(pred = mean(p), obs = mean(home_win), n = n(), .groups = "drop") |>
+  filter(n >= 10)
+
+p_calib <- ggplot(calib, aes(pred, obs, color = model)) +
+  geom_abline(linetype = "dashed", color = "gray55") +
+  geom_line(linewidth = 0.9) +
+  geom_point(aes(size = n)) +
+  scale_color_manual(values = model_cols, labels = c(Ridge = "Model (ridge)", Vegas = "Vegas")) +
+  scale_size_area(max_size = 7, guide = "none") +
+  scale_x_continuous(labels = percent, limits = c(0, 1)) +
+  scale_y_continuous(labels = percent, limits = c(0, 1)) +
+  coord_equal() +
+  labs(title = "When the model says 70%, it means it",
+       subtitle = "Near the dashed line = honest probabilities",
+       x = "Predicted chance the home team wins", y = "How often the home team actually won",
+       color = NULL)
+show_and_save(p_calib, "04_calibration", width = 6.5, height = 6.2)
+```
+
+::: {.callout-tip}
+## What this means
+Both lines hug the diagonal, so a team the model gives a 70% chance wins about 70% of the time. The difference is that Vegas is willing to be **more confident** (it has more games near 20% and 80%), and those confident calls hold up.
+:::
+
+### 4. Betting on the model's disagreements would lose money
+
+When the model's margin differs from the Vegas spread, a bettor could bet on whichever side the model prefers. After the sportsbook's cut, those bets need to win **at least 52.4%** of the time to make money.
+
+```{r}
+#| label: ats
+
+ats_all <- scored |>
+  filter(model %in% c("Linear", "Ridge", "XGBoost")) |>
+  mutate(edge = m - spread_line, cover = result - spread_line) |>
+  filter(cover != 0)
+
+ats <- bind_rows(
+  ats_all |> mutate(group = "Every game"),
+  ats_all |> filter(abs(edge) >= 3) |> mutate(group = "Model disagrees by 3+ pts")) |>
+  group_by(model, group) |>
+  summarize(bets = n(), win = mean(sign(edge) == sign(cover)), .groups = "drop")
+
+p_ats <- ggplot(ats, aes(win, fct_rev(model), fill = model)) +
+  geom_col(width = 0.65) +
+  geom_vline(xintercept = 0.524, color = "#c0392b", linewidth = 0.8) +
+  geom_text(aes(label = sprintf("%s  (%d bets)", percent(win, 0.1), bets)),
+            hjust = 1.05, size = 3.5, color = "white", fontface = "bold") +
+  facet_wrap(~group) +
+  scale_fill_manual(values = model_cols, guide = "none") +
+  scale_x_continuous(labels = percent, limits = c(0, 0.65), breaks = seq(0, 0.6, 0.2)) +
+  labs(title = "Following the model against the spread does not pay",
+       subtitle = "Win rate betting the model's side. Red line = 52.4% needed to profit.",
+       x = "Bets won", y = NULL) +
+  theme(strip.text = element_text(face = "bold", hjust = 0), panel.grid.major.y = element_blank())
+show_and_save(p_ats, "05_betting", height = 3.8)
+```
+
+::: {.callout-tip}
+## What this means
+No version of the model clears the 52.4% line in a meaningful way, even when it strongly disagrees with Vegas. **The model does not find an edge against the betting market**, which is what decades of research would predict. Its value is elsewhere: forecasts that can be explained, made before betting lines exist, and fed into other tools.
+:::
+
+### 5. What drives the predictions
+
+```{r}
+#| label: fig-drivers
+#| fig-height: 4.6
+
+# Continuous ratings are standardized (effect per 1 SD); yes/no factors stay 0/1
+# so their effect reads as "points when this is true"
+coef_df  <- tune_df |> mutate(across(c(d_off_epa, d_def_epa, d_pd, rest_diff), \(x) as.numeric(scale(x))))
+coef_fit <- lm(reformulate(margin_vars, "result"), data = coef_df)
+labels <- c(d_off_epa = "Offense efficiency gap", d_def_epa = "Defense efficiency gap",
+            d_pd = "Point-differential gap", rest_diff = "Extra rest days",
+            neutral = "Neutral site", div_game = "Division game",
+            home_qb_change = "Home team starting a backup QB",
+            away_qb_change = "Away team starting a backup QB")
+
+p_drivers <- tidy(coef_fit, conf.int = TRUE) |>
+  filter(term != "(Intercept)") |>
+  mutate(term = fct_reorder(labels[term], estimate)) |>
+  ggplot(aes(estimate, term)) +
+  geom_vline(xintercept = 0, color = "gray70") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0,
+                 color = model_cols[["Ridge"]], linewidth = 0.9) +
+  geom_point(color = model_cols[["Ridge"]], size = 3.2) +
+  labs(title = "Recent point differential and quarterback changes matter most",
+       subtitle = "Effect on the home team's predicted margin (points), with 95% confidence intervals",
+       x = "Points added to the home team's predicted margin", y = NULL,
+       caption = "Linear model fit to 2016–2023 games.\nRatings: effect of a one-standard-deviation gap. Yes/no factors: effect when true.") +
+  theme(panel.grid.major.y = element_blank())
+show_and_save(p_drivers, "06_drivers", height = 4.6)
+```
+
+::: {.callout-tip}
+## What this means
+The biggest factor is simply **how much better one team has been recently**. Starting a backup quarterback is the next most important: it costs a team about 2 to 3 points, in line with how sportsbooks move lines for quarterback injuries. The two efficiency measures overlap heavily with point differential, so their individual effects are uncertain (that overlap is exactly what ridge regression handles).
+:::
+
+## Spotlight: 2026 Week 7
+
+Week 7 (October 22–26, 2026) shows what this looks like on a real slate. As with every other week, these predictions used **only games through Week 6**.
+
+```{r}
+#| label: week7-data
+
+w7 <- wf |>
+  filter(season == 2026, week == 7) |>
+  transmute(game_id, away_team, home_team, result, total,
+            pred_margin = m_Ridge, pred_total = t_Ridge,
+            pred_home = (t_Ridge + m_Ridge) / 2, pred_away = (t_Ridge - m_Ridge) / 2,
+            win_prob = pnorm(m_Ridge / sd_Ridge),
+            close_spread = spread_line, close_total = total_line, p_vegas) |>
+  left_join(opening |> select(game_id, open_spread = open_spread_line,
+                              open_total = open_total_line), by = "game_id") |>
+  mutate(matchup = paste(away_team, "@", home_team),
+         model_pick = if_else(pred_margin > 0, home_team, away_team),
+         vegas_pick = if_else(close_spread > 0, home_team, away_team),
+         winner     = if_else(result > 0, home_team, away_team),
+         model_right = model_pick == winner, vegas_right = vegas_pick == winner)
+
+dir.create("output", showWarnings = FALSE)
+write_csv(w7, "output/week7_predictions.csv")
+```
+
+```{r}
+#| label: week7-table
+
+check <- \(x) if_else(x, "✔", "✘")
+book  <- \(x) if_else(x > 0, paste0("-", abs(x)), if_else(x < 0, paste0("+", abs(x)), "PK"))
+
+w7 |>
+  arrange(desc(abs(pred_margin))) |>
+  transmute(Matchup = matchup,
+            `Model pick` = sprintf("%s (%.0f%%)", model_pick, 100 * pmax(win_prob, 1 - win_prob)),
+            `Model score` = sprintf("%s %.0f, %s %.0f", away_team, pred_away, home_team, pred_home),
+            `Vegas pick` = vegas_pick,
+            `Final score` = sprintf("%s %.0f, %s %.0f", away_team, (total - result) / 2,
+                                    home_team, (total + result) / 2),
+            Model = check(model_right), Vegas = check(vegas_right)) |>
+  gt() |>
+  tab_spanner("Right winner?", c(Model, Vegas)) |>
+  tab_header(title = "Week 7: model vs. Vegas vs. what happened",
+             subtitle = "Sorted from the model's most confident pick to its least. Model pick shows its win probability.") |>
+  tab_style(cell_text(color = "#1a7f37", weight = "bold"),
+            cells_body(columns = c(Model, Vegas), rows = TRUE)) |>
+  tab_style(cell_text(color = "#c0392b", weight = "bold"),
+            cells_body(columns = Model, rows = Model == "✘")) |>
+  tab_style(cell_text(color = "#c0392b", weight = "bold"),
+            cells_body(columns = Vegas, rows = Vegas == "✘")) |>
+  cols_align("center", c(Model, Vegas))
+```
+
+```{r}
+#| label: fig-week7
+#| fig-height: 6.4
+
+w7_long <- w7 |>
+  mutate(matchup = fct_reorder(matchup, result)) |>
+  select(matchup, Model = pred_margin, Vegas = close_spread, Actual = result) |>
+  pivot_longer(-matchup, names_to = "what", values_to = "margin") |>
+  mutate(what = factor(what, c("Model", "Vegas", "Actual")))
+
+p_w7 <- ggplot(w7_long, aes(margin, matchup)) +
+  geom_vline(xintercept = 0, color = "gray70") +
+  geom_line(aes(group = matchup), color = "gray85", linewidth = 1.6) +
+  geom_point(aes(color = what, shape = what, size = what)) +
+  scale_color_manual(values = c(Model = model_cols[["Ridge"]], Vegas = model_cols[["Vegas"]],
+                                Actual = actual_col), name = NULL,
+                     labels = c("Model prediction", "Vegas closing line", "Actual result")) +
+  scale_shape_manual(values = c(Model = 16, Vegas = 16, Actual = 18), name = NULL,
+                     labels = c("Model prediction", "Vegas closing line", "Actual result")) +
+  scale_size_manual(values = c(Model = 3.4, Vegas = 3.4, Actual = 4.6), name = NULL,
+                    labels = c("Model prediction", "Vegas closing line", "Actual result")) +
+  annotate("text", x = -Inf, y = Inf, label = "← away team wins", hjust = -0.05, vjust = -0.6,
+           size = 3.3, color = "gray40") +
+  annotate("text", x = Inf, y = Inf, label = "home team wins →", hjust = 1.05, vjust = -0.6,
+           size = 3.3, color = "gray40") +
+  coord_cartesian(clip = "off") +
+  labs(title = "Week 7: the model and Vegas were close; the games were not",
+       subtitle = "Predicted and actual home-team margin for each game (points)",
+       x = "Home team margin (points)", y = NULL) +
+  theme(panel.grid.major.y = element_blank(), plot.margin = margin(t = 12, r = 10, b = 5, l = 5))
+show_and_save(p_w7, "07_week7", height = 6.4)
+```
+
+```{r}
+#| label: week7-scorecard
+
+w7_score <- w7 |>
+  summarize(Games = n(),
+            `Model: winners picked` = sum(model_right),
+            `Vegas: winners picked` = sum(vegas_right),
+            `Model: avg. margin miss` = mean(abs(pred_margin - result)),
+            `Vegas: avg. margin miss` = mean(abs(close_spread - result)),
+            `Model: avg. total miss`  = mean(abs(pred_total - total)),
+            `Vegas: avg. total miss`  = mean(abs(close_total - total)))
+w7_score |>
+  gt() |> fmt_number(contains("avg."), decimals = 1) |>
+  tab_header(title = "Week 7 scorecard (points)")
+```
+
+::: {.callout-tip}
+## What this means
+Week 7 was a tough week for the model on winners: it picked **`r w7_score$"Model: winners picked"` of 14**, versus **`r w7_score$"Vegas: winners picked"` of 14** for Vegas. Several games were blowouts nobody saw coming (Tampa Bay won by 30 as an underdog; Cincinnati won by 22 when the line was 3), which is why both forecasts missed by more than 10 points on average. The model did slightly **better than Vegas on totals**, missing the combined score by `r number(w7_score$"Model: avg. total miss", 0.1)` points versus `r number(w7_score$"Vegas: avg. total miss", 0.1)`. One week of 14 games swings a lot; the 651-game results above are the real measure.
+:::
+
+### Did the betting line move toward the model?
+
+During the week, the line moved in most games. If the line moved **toward** the model's number, the market "caught up" with information the model already reflected.
+
+```{r}
+#| label: fig-line-movement
+#| fig-height: 6
+
+move <- w7 |>
+  mutate(matchup = fct_reorder(matchup, close_spread),
+         moved = close_spread != open_spread,
+         toward_model = moved & sign(close_spread - open_spread) == sign(pred_margin - open_spread))
+
+p_move <- ggplot(move, aes(y = matchup)) +
+  geom_vline(xintercept = 0, color = "gray75") +
+  geom_segment(aes(x = open_spread, xend = close_spread, yend = matchup),
+               color = model_cols[["Vegas"]], linewidth = 0.9,
+               arrow = arrow(length = unit(0.13, "cm"), type = "closed")) +
+  geom_point(aes(x = open_spread), color = model_cols[["Vegas"]], shape = 21,
+             fill = "white", size = 2.8, stroke = 1) +
+  geom_point(aes(x = pred_margin), color = model_cols[["Ridge"]], size = 3.4) +
+  labs(title = "How the line moved during the week, and where the model stood",
+       subtitle = "Open circle = opening line (Mon.)  |  arrow = move to closing line  |  blue dot = model",
+       x = "Predicted home team margin (points)", y = NULL,
+       caption = "Opening lines: DraftKings via Sports Illustrated, Oct 19, 2026. Positive = home team favored.") +
+  theme(panel.grid.major.y = element_blank())
+show_and_save(p_move, "08_line_movement", height = 6)
+
+n_moved <- sum(move$moved); n_toward <- sum(move$toward_model)
+```
+
+::: {.callout-tip}
+## What this means
+In **`r n_toward` of the `r n_moved` games** where the line moved, it moved toward the model's number. The clearest example is **Bengals @ Ravens**: the line opened with Baltimore favored by 3 and closed with Cincinnati favored by 3 after Baltimore's quarterback situation changed. Using only Week 6 information, the model already had Cincinnati as a slight favorite, because its quarterback-change flag picked up Baltimore's backup starter. Cincinnati won 35–13.
+
+One week is a small sample, but it shows the model does more than copy the opening line.
+:::
+
+## Limitations
+
+- **The benchmark is the closing line.** It includes late information (final injury news, weather forecasts, professional bets) that an earlier forecast would not have had. That makes the test harder, not easier.
+- **Weather is "known" in past games.** Training uses recorded weather, not forecasts. 2026 games use each stadium's typical weather for the month.
+- **Quarterback changes use the starter listed in the data.** Most starters are known days ahead, but a last-minute change would not be.
+- **No player-level injury model.** The quarterback flag covers the most important position, but missing linemen, receivers or defenders are not included.
+- **Week 7 is only 14 games.** It is an illustration; the 651-game test is the evidence.
+
+## Conclusion
+
+A transparent model built entirely from free, public NFL data gets **within half a point per game of the Vegas closing line**, gives honest win probabilities, and picks about 63% of winners, versus about 68% for Vegas. A machine-learning model did no better than a regression, and betting on the model's disagreements with Vegas would not have made money.
+
+**For an analytics team, the takeaway is to use the betting market as the benchmark, and build in-house models where they add something the market can't:** explanations of *why* a team is favored, forecasts before lines are posted, and probabilities that feed season simulations, playoff odds and fantasy projections.
+
+## References
+
+- Brier, G. W. (1950). Verification of forecasts expressed in terms of probability. *Monthly Weather Review, 78*(1), 1–3.
+- Carl, S., & Baldwin, B. *nflfastR: Functions to efficiently access NFL play by play data* [R package]. https://www.nflfastr.com/
+- Chen, T., & Guestrin, C. (2016). XGBoost: A scalable tree boosting system. *Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining*, 785–794.
+- Diebold, F. X., & Mariano, R. S. (1995). Comparing predictive accuracy. *Journal of Business & Economic Statistics, 13*(3), 253–263.
+- Gandar, J., Zuber, R., O'Brien, T., & Russo, B. (1988). Testing rationality in the point spread betting market. *The Journal of Finance, 43*(4), 995–1008.
+- Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The Elements of Statistical Learning* (2nd ed.), Section 7.10. Springer.
+- Ho, T., & Carl, S. *nflreadr: Download 'nflverse' data* [R package]. https://nflreadr.nflverse.com/
+- Hoerl, A. E., & Kennard, R. W. (1970). Ridge regression: Biased estimation for nonorthogonal problems. *Technometrics, 12*(1), 55–67.
+- Hyndman, R. J., & Athanasopoulos, G. (2021). *Forecasting: Principles and Practice* (3rd ed.), Section 5.10. OTexts. https://otexts.com/fpp3/
+- Kuhn, M., & Wickham, H. (2020). *Tidymodels: A collection of packages for modeling and machine learning using tidyverse principles*. https://www.tidymodels.org
+- Levitt, S. D. (2004). Why are gambling markets organised so differently from financial markets? *The Economic Journal, 114*(495), 223–246.
+- Petrella, S. (2021, updated 2026). How to remove juice/vig from sports betting odds. *Action Network*. https://www.actionnetwork.com/education/remove-juice-vig
+- Sharpe, L. *nfldata* [Data repository]. https://github.com/nflverse/nfldata
+- *Sports Illustrated* Betting (2026, October 19). NFL Week 7 opening odds for every game.
+- Stern, H. (1991). On the probability of winning a football game. *The American Statistician, 45*(3), 179–183.
+- Yurko, R., Ventura, S., & Horowitz, M. (2019). nflWAR: A reproducible method for offensive player evaluation in football. *Journal of Quantitative Analysis in Sports, 15*(3), 163–183.
+
+## Reproducibility
+
+```{r}
+#| label: session-info
+sessionInfo()
+```
