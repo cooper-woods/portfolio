@@ -1,7 +1,7 @@
 # Data Science & GIS Portfolio
 ## Cooper Woods
 
-Hello! I'm a data analyst and geospatial scientist with expertise in data analysis, spatial modeling, machine learning, natural language processing, and data visualization. This portfolio showcases projects spanning quantitative data science and geographic information systems.
+Hello! I'm a data analyst and geospatial scientist with expertise in data analysis, spatial modeling, machine learning, natural language processing, and data visualization. This portfolio showcases projects spanning quantitative data science, sports analytics, and geographic information systems.
 
 ---
 
@@ -106,6 +106,21 @@ I optimized pizza delivery operations in Giles County, Virginia using network an
 
 ---
 
+### Sports Analytics & Forecasting
+
+#### 8. [Can a Homemade Model Keep Up With Vegas? NFL Game Forecasting](./08_NFL_Game_Prediction/)
+**Predictive Modeling & Forecast Evaluation**
+
+I built a model that predicts the score, winner, point spread and win probability for every NFL game using free public play-by-play data, then tested it week by week on 651 games against the Vegas betting line. The model picked 63% of winners (vs. 68% for Vegas) and finished within half a point per game of the betting market, with well-calibrated probabilities. A machine-learning model did no better than a simple regression.
+
+- **Skills:** Predictive Modeling, Forecast Evaluation, Feature Engineering, Sports Betting Markets, Data Communication
+- **Methods:** Linear & Ridge Regression, XGBoost, Walk-Forward Validation, Season-Ahead Cross-Validation, Calibration & Brier Score, Paired t-test
+- **Dataset:** nflverse play-by-play and betting lines (2015–2026, ~500,000 plays)
+
+[View Project](./08_NFL_Game_Prediction/) | [View Rendered Output](./08_NFL_Game_Prediction/NFL_Game_Prediction.html) | [Full Report](./08_NFL_Game_Prediction/08_NFL_Game_Prediction_Report.md)
+
+---
+
 ## Skills & Technologies
 
 **Programming & Data Science:**
@@ -116,7 +131,8 @@ I optimized pizza delivery operations in Giles County, Virginia using network an
 
 **Analysis & Modeling:**
 - Natural Language Processing (Topic Modeling, Sentiment Analysis, Text Classification)
-- Machine Learning (Classification, Logistic Regression, Model Evaluation)
+- Machine Learning (Classification, Logistic Regression, Ridge Regression, XGBoost, Model Evaluation)
+- Forecasting (Walk-Forward Validation, Probability Calibration, Benchmarking Against Markets)
 - Statistical Analysis (Hypothesis Testing, Cross-Validation, Paired t-tests)
 - Spatial Statistics (OLS Regression, Geographically Weighted Regression, Autocorrelation Testing)
 
@@ -138,7 +154,7 @@ I optimized pizza delivery operations in Giles County, Virginia using network an
 
 ## About This Portfolio
 
-This portfolio showcases analytical and technical projects from my undergraduate studies in data science and geography at the University of Richmond. Projects demonstrate proficiency in:
+This portfolio showcases analytical and technical projects from my undergraduate studies in data science and geography at the University of Richmond, along with independent work in sports analytics. Projects demonstrate proficiency in:
 
 - **Data science:** from exploratory analysis through machine learning model development and evaluation
 - **Spatial analysis:** from data integration through deterministic modeling and statistical inference
@@ -174,4 +190,4 @@ Each project folder contains:
 
 ---
 
-*Last Updated: August 2026*
+*Last Updated: October 2026*
